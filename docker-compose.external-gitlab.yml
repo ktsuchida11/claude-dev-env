@@ -1,3 +1,22 @@
+# 外部 GitLab 版 docker-compose
+#
+# ローカル GitLab CE / GitLab Runner を含まず、外部の GitLab インスタンスを利用する構成。
+# Docker / Podman 両対応（明示的ネットワーク定義）、プロキシ対応済み。
+#
+# 使用方法:
+#   # Docker
+#   docker compose -f docker-compose.external-gitlab.yml up -d --build
+#   docker compose -f docker-compose.external-gitlab.yml down
+#
+#   # Podman
+#   podman-compose -f docker-compose.external-gitlab.yml up -d --build
+#   podman-compose -f docker-compose.external-gitlab.yml down
+#
+# 必要な .env 設定:
+#   OPENAI_API_KEY, LITELLM_MASTER_KEY       (必須)
+#   GITLAB_HOST, GITLAB_PERSONAL_ACCESS_TOKEN (外部 GitLab 接続用)
+#   HTTP_PROXY, HTTPS_PROXY, NO_PROXY        (プロキシ環境の場合)
+
 services:
   litellm:
     build:
@@ -6,6 +25,8 @@ services:
       - "4000:4000"
     env_file:
       - .env
+    networks:
+      - default
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
       interval: 10s
@@ -20,70 +41,6 @@ services:
     #   - https_proxy=${HTTPS_PROXY:-}
     #   - no_proxy=${NO_PROXY:-}
 
-  gitlab:
-    image: gitlab/gitlab-ce:17.8.1-ce.0
-    profiles:
-      - gitlab
-    platform: linux/amd64
-    hostname: gitlab
-    ports:
-      - "8929:80"     # Web UI: http://localhost:8929
-      - "2224:22"     # SSH: ssh://git@localhost:2224
-    environment:
-      GITLAB_ROOT_PASSWORD: ${GITLAB_ROOT_PASSWORD:-P@ssw0rd1234}
-      GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://gitlab'
-        gitlab_rails['gitlab_shell_ssh_port'] = 2224
-        # メモリ削減設定
-        puma['worker_processes'] = 2
-        sidekiq['concurrency'] = 5
-        postgresql['shared_buffers'] = "128MB"
-        prometheus_monitoring['enable'] = false
-        alertmanager['enable'] = false
-        gitlab_kas['enable'] = false
-        # GitLab Pages
-        pages_external_url 'http://gitlab-pages'
-        gitlab_pages['enable'] = true
-        gitlab_pages['inplace_chroot'] = true
-      # Proxy settings (uncomment if behind a corporate proxy)
-      # HTTP_PROXY: ${HTTP_PROXY:-}
-      # HTTPS_PROXY: ${HTTPS_PROXY:-}
-      # NO_PROXY: ${NO_PROXY:-}
-      # http_proxy: ${HTTP_PROXY:-}
-      # https_proxy: ${HTTPS_PROXY:-}
-      # no_proxy: ${NO_PROXY:-}
-    volumes:
-      - gitlab-config:/etc/gitlab
-      - gitlab-logs:/var/log/gitlab
-      - gitlab-data:/var/opt/gitlab
-    shm_size: '256m'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/-/readiness?all=1"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 300s
-
-  gitlab-runner:
-    image: gitlab/gitlab-runner:v17.8.1
-    profiles:
-      - gitlab
-    depends_on:
-      gitlab:
-        condition: service_healthy
-    volumes:
-      - gitlab-runner-config:/etc/gitlab-runner
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - CI_SERVER_URL=http://gitlab
-      # Proxy settings (uncomment if behind a corporate proxy)
-      # - HTTP_PROXY=${HTTP_PROXY:-}
-      # - HTTPS_PROXY=${HTTPS_PROXY:-}
-      # - NO_PROXY=${NO_PROXY:-}
-      # - http_proxy=${HTTP_PROXY:-}
-      # - https_proxy=${HTTPS_PROXY:-}
-      # - no_proxy=${NO_PROXY:-}
-
   dev:
     build:
       context: ./.devcontainer
@@ -93,6 +50,7 @@ services:
         GIT_DELTA_VERSION: "0.18.2"
         ZSH_IN_DOCKER_VERSION: "1.2.0"
         GLAB_VERSION: "1.86.0"
+        # Proxy settings for build time (uncomment if behind a corporate proxy)
         # HTTP_PROXY: ${HTTP_PROXY:-}
         # HTTPS_PROXY: ${HTTPS_PROXY:-}
         # NO_PROXY: ${NO_PROXY:-}
@@ -109,7 +67,8 @@ services:
       - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
       - NODE_OPTIONS=--max-old-space-size=4096
       - CLAUDE_CONFIG_DIR=/home/node/.claude
-      - GITLAB_HOST=http://gitlab
+      # External GitLab settings
+      - GITLAB_HOST=${GITLAB_HOST:-}
       - GITLAB_TOKEN=${GITLAB_PERSONAL_ACCESS_TOKEN:-}
       - ENABLE_FIREWALL=${ENABLE_FIREWALL:-true}
       # Proxy settings (uncomment if behind a corporate proxy)
@@ -120,13 +79,15 @@ services:
       # - https_proxy=${HTTPS_PROXY:-}
       # - no_proxy=${NO_PROXY:-}
     volumes:
-      - ./workspace:/workspace:delegated
+      - ./workspace:/workspace
       - claude-config:/home/node/.claude
       - bash-history:/commandhistory
     user: node
     working_dir: /workspace
     stdin_open: true
     tty: true
+    networks:
+      - default
 
   openhands:
     image: ghcr.io/openhands/openhands:latest
@@ -155,12 +116,14 @@ services:
       - "host.docker.internal:host-gateway"
     tty: true
     stdin_open: true
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
 
 volumes:
   claude-config:
   bash-history:
-  gitlab-config:
-  gitlab-logs:
-  gitlab-data:
-  gitlab-runner-config:
   openhands-config:

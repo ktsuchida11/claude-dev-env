@@ -37,6 +37,8 @@ services:
 
   gitlab:
     image: gitlab/gitlab-ce:17.8.1-ce.0
+    profiles:
+      - gitlab
     platform: linux/amd64
     hostname: gitlab
     ports:
@@ -81,6 +83,8 @@ services:
 
   gitlab-runner:
     image: gitlab/gitlab-runner:v17.8.1
+    profiles:
+      - gitlab
     depends_on:
       gitlab:
         condition: service_healthy
@@ -117,8 +121,6 @@ services:
     depends_on:
       litellm:
         condition: service_healthy
-      gitlab:
-        condition: service_healthy
     environment:
       - ANTHROPIC_BASE_URL=http://litellm:4000
       - ANTHROPIC_AUTH_TOKEN=${LITELLM_MASTER_KEY}
@@ -128,6 +130,7 @@ services:
       - CLAUDE_CONFIG_DIR=/home/node/.claude
       - GITLAB_HOST=http://gitlab
       - GITLAB_TOKEN=${GITLAB_PERSONAL_ACCESS_TOKEN:-}
+      - ENABLE_FIREWALL=${ENABLE_FIREWALL:-true}
       # Proxy settings (uncomment if behind a corporate proxy)
       # - HTTP_PROXY=${HTTP_PROXY:-}
       # - HTTPS_PROXY=${HTTPS_PROXY:-}
@@ -146,6 +149,36 @@ services:
     networks:
       - default
 
+  openhands:
+    image: ghcr.io/openhands/openhands:latest
+    profiles:
+      - openhands
+    ports:
+      - "3000:3000"
+    environment:
+      - SANDBOX_RUNTIME_CONTAINER_IMAGE=ghcr.io/openhands/runtime:1.1-nikolaik
+      - WORKSPACE_MOUNT_PATH=${OPENHANDS_WORKSPACE_MOUNT_PATH:-/Users/tsuchitakouji/pg_work_space/m_poc/workspace-openhands}
+      # Proxy settings (uncomment if behind a corporate proxy)
+      # - HTTP_PROXY=${HTTP_PROXY:-}
+      # - HTTPS_PROXY=${HTTPS_PROXY:-}
+      # - NO_PROXY=${NO_PROXY:-}
+      # - http_proxy=${HTTP_PROXY:-}
+      # - https_proxy=${HTTPS_PROXY:-}
+      # - no_proxy=${NO_PROXY:-}
+    volumes:
+      - /run/podman/podman.sock:/var/run/docker.sock
+      - openhands-config:/root/.openhands
+      - ./workspace-openhands:/opt/workspace_base
+    depends_on:
+      litellm:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    tty: true
+    stdin_open: true
+    networks:
+      - default
+
 networks:
   default:
     driver: bridge
@@ -157,3 +190,4 @@ volumes:
   gitlab-logs:
   gitlab-data:
   gitlab-runner-config:
+  openhands-config:

@@ -2,6 +2,13 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# ファイアウォールの ON/OFF 制御
+# ENABLE_FIREWALL=false で無効化（プロキシ環境での切り分け等に利用）
+if [ "${ENABLE_FIREWALL:-true}" = "false" ]; then
+    echo "Firewall disabled (ENABLE_FIREWALL=false). Skipping firewall configuration."
+    exit 0
+fi
+
 # 1. Extract Docker DNS info BEFORE any flushing
 DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
 

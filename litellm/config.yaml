@@ -10,6 +10,12 @@ model_list:
       model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
 
+  # ========== Anthropic (直接接続) ==========
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+
   # ========== Phase 2: Azure OpenAI ==========
   # model フィールドは azure/<デプロイメント名> の形式
   # .env の AZURE_DEPLOYMENT_NAME の値に置き換えて使用
