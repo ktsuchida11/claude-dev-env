@@ -71,6 +71,7 @@ services:
       - GITLAB_HOST=${GITLAB_HOST:-}
       - GITLAB_TOKEN=${GITLAB_PERSONAL_ACCESS_TOKEN:-}
       - ENABLE_FIREWALL=${ENABLE_FIREWALL:-true}
+      - HOST_WORKSPACE_PATH=${PWD}/workspace
       # Proxy settings (uncomment if behind a corporate proxy)
       # - HTTP_PROXY=${HTTP_PROXY:-}
       # - HTTPS_PROXY=${HTTPS_PROXY:-}
@@ -82,6 +83,7 @@ services:
       - ./workspace:/workspace
       - claude-config:/home/node/.claude
       - bash-history:/commandhistory
+      - /var/run/docker.sock:/var/run/docker.sock
     user: node
     working_dir: /workspace
     stdin_open: true

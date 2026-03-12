@@ -1,0 +1,7 @@
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.env
+frontend@0.1.0
+next

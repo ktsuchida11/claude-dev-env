@@ -16,6 +16,12 @@ model_list:
       model: anthropic/claude-sonnet-4-6
       api_key: os.environ/ANTHROPIC_API_KEY
 
+  - model_name: claude-opus
+    litellm_params:
+      model: anthropic/claude-opus-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+
   # ========== Phase 2: Azure OpenAI ==========
   # model フィールドは azure/<デプロイメント名> の形式
   # .env の AZURE_DEPLOYMENT_NAME の値に置き換えて使用
@@ -29,9 +35,21 @@ model_list:
   # ========== Phase 3: Azure Databricks (Claude External Model) ==========
   # Databricks の External Model 機能で Anthropic API をプロキシ
   # エンドポイント名は Databricks Serving で作成した名前に置き換え
-  - model_name: db-claude-sonnet
+  - model_name: db-claude-sonnet-4-5
     litellm_params:
       model: databricks/claude-sonnet-4-5
+      api_key: os.environ/DATABRICKS_API_KEY
+      api_base: os.environ/DATABRICKS_API_BASE
+
+  - model_name: db-claude-sonnet-4-6
+    litellm_params:
+      model: databricks/claude-sonnet-4-6
+      api_key: os.environ/DATABRICKS_API_KEY
+      api_base: os.environ/DATABRICKS_API_BASE
+      
+  - model_name: db-claude-opus-4-6
+    litellm_params:
+      model: databricks/claude-opus-4-6
       api_key: os.environ/DATABRICKS_API_KEY
       api_base: os.environ/DATABRICKS_API_BASE
 
