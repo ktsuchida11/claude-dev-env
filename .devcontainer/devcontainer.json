@@ -12,7 +12,10 @@
         "eamodio.gitlens",
         "ms-python.python",
         "ms-python.debugpy",
-        "ms-vscode.js-debug"
+        "ms-vscode.js-debug",
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-spring-boot",
+        "vmware.vscode-boot-dev-pack"
       ],
       "settings": {
         "editor.formatOnSave": true,
@@ -20,6 +23,8 @@
         "editor.codeActionsOnSave": {
           "source.fixAll.eslint": "explicit"
         },
+        "python.defaultInterpreterPath": "/workspace/backend/.venv/bin/python",
+        "python.analysis.extraPaths": ["/workspace/backend/.venv/lib/python3.12/site-packages"],
         "terminal.integrated.defaultProfile.linux": "zsh",
         "terminal.integrated.profiles.linux": {
           "bash": {

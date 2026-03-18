@@ -20,70 +20,6 @@ services:
     #   - https_proxy=${HTTPS_PROXY:-}
     #   - no_proxy=${NO_PROXY:-}
 
-  gitlab:
-    image: gitlab/gitlab-ce:17.8.1-ce.0
-    profiles:
-      - gitlab
-    platform: linux/amd64
-    hostname: gitlab
-    ports:
-      - "8929:80"     # Web UI: http://localhost:8929
-      - "2224:22"     # SSH: ssh://git@localhost:2224
-    environment:
-      GITLAB_ROOT_PASSWORD: ${GITLAB_ROOT_PASSWORD:-P@ssw0rd1234}
-      GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://gitlab'
-        gitlab_rails['gitlab_shell_ssh_port'] = 2224
-        # メモリ削減設定
-        puma['worker_processes'] = 2
-        sidekiq['concurrency'] = 5
-        postgresql['shared_buffers'] = "128MB"
-        prometheus_monitoring['enable'] = false
-        alertmanager['enable'] = false
-        gitlab_kas['enable'] = false
-        # GitLab Pages
-        pages_external_url 'http://gitlab-pages'
-        gitlab_pages['enable'] = true
-        gitlab_pages['inplace_chroot'] = true
-      # Proxy settings (uncomment if behind a corporate proxy)
-      # HTTP_PROXY: ${HTTP_PROXY:-}
-      # HTTPS_PROXY: ${HTTPS_PROXY:-}
-      # NO_PROXY: ${NO_PROXY:-}
-      # http_proxy: ${HTTP_PROXY:-}
-      # https_proxy: ${HTTPS_PROXY:-}
-      # no_proxy: ${NO_PROXY:-}
-    volumes:
-      - gitlab-config:/etc/gitlab
-      - gitlab-logs:/var/log/gitlab
-      - gitlab-data:/var/opt/gitlab
-    shm_size: '256m'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/-/readiness?all=1"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 300s
-
-  gitlab-runner:
-    image: gitlab/gitlab-runner:v17.8.1
-    profiles:
-      - gitlab
-    depends_on:
-      gitlab:
-        condition: service_healthy
-    volumes:
-      - gitlab-runner-config:/etc/gitlab-runner
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - CI_SERVER_URL=http://gitlab
-      # Proxy settings (uncomment if behind a corporate proxy)
-      # - HTTP_PROXY=${HTTP_PROXY:-}
-      # - HTTPS_PROXY=${HTTPS_PROXY:-}
-      # - NO_PROXY=${NO_PROXY:-}
-      # - http_proxy=${HTTP_PROXY:-}
-      # - https_proxy=${HTTPS_PROXY:-}
-      # - no_proxy=${NO_PROXY:-}
-
   dev:
     build:
       context: ./.devcontainer
@@ -92,7 +28,6 @@ services:
         CLAUDE_CODE_VERSION: latest
         GIT_DELTA_VERSION: "0.18.2"
         ZSH_IN_DOCKER_VERSION: "1.2.0"
-        GLAB_VERSION: "1.86.0"
         # HTTP_PROXY: ${HTTP_PROXY:-}
         # HTTPS_PROXY: ${HTTPS_PROXY:-}
         # NO_PROXY: ${NO_PROXY:-}
@@ -103,14 +38,12 @@ services:
       litellm:
         condition: service_healthy
     environment:
-      - ANTHROPIC_BASE_URL=http://litellm:4000
-      - ANTHROPIC_AUTH_TOKEN=${LITELLM_MASTER_KEY}
-      - ANTHROPIC_MODEL=gpt-4o
+      - LITELLM_BASE_URL=http://litellm:4000
+      - LITELLM_AUTH_TOKEN=${LITELLM_MASTER_KEY}
       - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
       - NODE_OPTIONS=--max-old-space-size=4096
       - CLAUDE_CONFIG_DIR=/home/node/.claude
-      - GITLAB_HOST=http://gitlab
-      - GITLAB_TOKEN=${GITLAB_PERSONAL_ACCESS_TOKEN:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - ENABLE_FIREWALL=${ENABLE_FIREWALL:-true}
       - HOST_WORKSPACE_PATH=${PWD}/workspace
       # Proxy settings (uncomment if behind a corporate proxy)
@@ -125,44 +58,15 @@ services:
       - claude-config:/home/node/.claude
       - bash-history:/commandhistory
       - /var/run/docker.sock:/var/run/docker.sock
+      - frontend-node-modules:/workspace/frontend/node_modules:ro
+      - backend-venv:/workspace/backend/.venv:ro
     user: node
     working_dir: /workspace
     stdin_open: true
     tty: true
 
-  openhands:
-    image: ghcr.io/openhands/openhands:latest
-    profiles:
-      - openhands
-    ports:
-      - "3000:3000"
-    environment:
-      - SANDBOX_RUNTIME_CONTAINER_IMAGE=ghcr.io/openhands/runtime:1.1-nikolaik
-      - WORKSPACE_MOUNT_PATH=${OPENHANDS_WORKSPACE_MOUNT_PATH:-/Users/tsuchitakouji/pg_work_space/m_poc/workspace-openhands}
-      # Proxy settings (uncomment if behind a corporate proxy)
-      # - HTTP_PROXY=${HTTP_PROXY:-}
-      # - HTTPS_PROXY=${HTTPS_PROXY:-}
-      # - NO_PROXY=${NO_PROXY:-}
-      # - http_proxy=${HTTP_PROXY:-}
-      # - https_proxy=${HTTPS_PROXY:-}
-      # - no_proxy=${NO_PROXY:-}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - openhands-config:/root/.openhands
-      - ./workspace-openhands:/opt/workspace_base
-    depends_on:
-      litellm:
-        condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    tty: true
-    stdin_open: true
-
 volumes:
   claude-config:
   bash-history:
-  gitlab-config:
-  gitlab-logs:
-  gitlab-data:
-  gitlab-runner-config:
-  openhands-config:
+  frontend-node-modules:
+  backend-venv:

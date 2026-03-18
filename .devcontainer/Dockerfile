@@ -60,6 +60,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   curl \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Install Java (Eclipse Temurin JDK 21)
+RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg \
+  && echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(. /etc/os-release && echo "$VERSION_CODENAME") main" > /etc/apt/sources.list.d/adoptium.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends temurin-21-jdk \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN ln -s /usr/lib/jvm/temurin-21-jdk-* /usr/lib/jvm/temurin-21-jdk
+ENV JAVA_HOME=/usr/lib/jvm/temurin-21-jdk
+
+# Install Maven
+ARG MAVEN_VERSION=3.9.9
+RUN curl -fsSL https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz \
+  | tar -xz -C /opt \
+  && ln -s /opt/apache-maven-${MAVEN_VERSION}/bin/mvn /usr/local/bin/mvn
+
+# Install Gradle
+ARG GRADLE_VERSION=8.12
+RUN curl -fsSL https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -o /tmp/gradle.zip \
+  && unzip -q /tmp/gradle.zip -d /opt \
+  && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/local/bin/gradle \
+  && rm /tmp/gradle.zip
+
 # Install Docker CLI and Docker Compose plugin
 RUN install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
@@ -95,14 +118,6 @@ RUN ARCH=$(dpkg --print-architecture) && \
   sudo dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
   rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
-# Install GitLab CLI (glab)
-ARG GLAB_VERSION=1.86.0
-RUN ARCH=$(dpkg --print-architecture) && \
-  wget "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_${ARCH}.tar.gz" && \
-  tar -xzf "glab_${GLAB_VERSION}_linux_${ARCH}.tar.gz" && \
-  sudo install -m 755 bin/glab /usr/local/bin/glab && \
-  rm -rf "glab_${GLAB_VERSION}_linux_${ARCH}.tar.gz" bin/
-
 # Install uv (provides uvx for running Serena MCP server)
 RUN pip3 install --break-system-packages uv
 
@@ -123,6 +138,7 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
   -a "source /usr/share/doc/fzf/examples/key-bindings.zsh" \
   -a "source /usr/share/doc/fzf/examples/completion.zsh" \
   -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
+  -a "alias claude-litellm='ANTHROPIC_BASE_URL=\$LITELLM_BASE_URL ANTHROPIC_AUTH_TOKEN=\$LITELLM_AUTH_TOKEN claude'" \
   -x
 
 # Install Claude Code CLI
@@ -143,6 +159,16 @@ COPY mcp-servers.json /etc/claude-mcp/mcp-servers.json
 COPY setup-mcp.sh /usr/local/bin/setup-mcp.sh
 
 USER root
+
+# Install Java language server (jdtls) for Serena
+ARG JDTLS_VERSION=1.57.0
+ARG JDTLS_TIMESTAMP=202602261110
+RUN mkdir -p /opt/jdtls \
+  && curl -fsSL https://download.eclipse.org/jdtls/milestones/${JDTLS_VERSION}/jdt-language-server-${JDTLS_VERSION}-${JDTLS_TIMESTAMP}.tar.gz \
+  | tar -xz -C /opt/jdtls \
+  && printf '#!/bin/sh\nexec java -Declipse.application=org.eclipse.jdt.ls.core.id1 -Dosgi.bundles.defaultStartLevel=4 -Declipse.product=org.eclipse.jdt.ls.core.product -jar /opt/jdtls/plugins/org.eclipse.equinox.launcher_*.jar -configuration /opt/jdtls/config_linux "$@"\n' > /usr/local/bin/jdtls \
+  && chmod +x /usr/local/bin/jdtls
+
 RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/setup-mcp.sh && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/bin/chmod" > /etc/sudoers.d/node-firewall && \
   chmod 0440 /etc/sudoers.d/node-firewall && \
