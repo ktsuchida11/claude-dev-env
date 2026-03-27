@@ -32,8 +32,6 @@ services:
       - claude-config:/home/node/.claude
       - bash-history:/commandhistory
       - /var/run/docker.sock:/var/run/docker.sock
-      - frontend-node-modules:/workspace/frontend/node_modules:ro
-      - backend-venv:/workspace/backend/.venv:ro
     user: node
     working_dir: /workspace
     stdin_open: true
