@@ -1,0 +1,46 @@
+services:
+  dev:
+    build:
+      context: ./.devcontainer
+      args:
+        TZ: Asia/Tokyo
+        CLAUDE_CODE_VERSION: latest
+        GIT_DELTA_VERSION: "0.18.2"
+        ZSH_IN_DOCKER_VERSION: "1.2.0"
+        # HTTP_PROXY: ${HTTP_PROXY:-}
+        # HTTPS_PROXY: ${HTTPS_PROXY:-}
+        # NO_PROXY: ${NO_PROXY:-}
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+      - NODE_OPTIONS=--max-old-space-size=4096
+      - CLAUDE_CONFIG_DIR=/home/node/.claude
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - ENABLE_FIREWALL=${ENABLE_FIREWALL:-true}
+      - HOST_WORKSPACE_PATH=${PWD}/workspace
+      # Proxy settings (uncomment if behind a corporate proxy)
+      # - HTTP_PROXY=${HTTP_PROXY:-}
+      # - HTTPS_PROXY=${HTTPS_PROXY:-}
+      # - NO_PROXY=${NO_PROXY:-}
+      # - http_proxy=${HTTP_PROXY:-}
+      # - https_proxy=${HTTPS_PROXY:-}
+      # - no_proxy=${NO_PROXY:-}
+    volumes:
+      - ./workspace:/workspace:delegated
+      - claude-config:/home/node/.claude
+      - bash-history:/commandhistory
+      - /var/run/docker.sock:/var/run/docker.sock
+      - frontend-node-modules:/workspace/frontend/node_modules:ro
+      - backend-venv:/workspace/backend/.venv:ro
+    user: node
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+
+volumes:
+  claude-config:
+  bash-history:
+  frontend-node-modules:
+  backend-venv:
