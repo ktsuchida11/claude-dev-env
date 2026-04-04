@@ -14,7 +14,6 @@ ENV TZ="$TZ"
 #     https_proxy=${HTTPS_PROXY} \
 #     no_proxy=${NO_PROXY}
 
-ARG CLAUDE_CODE_VERSION=latest
 
 # Install basic development tools and iptables/ipset
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -30,7 +29,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   gh \
   bubblewrap \
   socat \
+  gnome-keyring \
+  dbus-x11 \
+  libsecret-1-dev \
   ripgrep \
+  postgresql-client \
   iptables \
   ipset \
   iproute2 \
@@ -60,28 +63,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   curl \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Java environment (optional, controlled by ENABLE_JAVA build arg)
+ARG ENABLE_JAVA=true
+
 # Install Java (Eclipse Temurin JDK 21)
-RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg \
+RUN if [ "$ENABLE_JAVA" = "true" ]; then \
+  curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg \
   && echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(. /etc/os-release && echo "$VERSION_CODENAME") main" > /etc/apt/sources.list.d/adoptium.list \
   && apt-get update \
   && apt-get install -y --no-install-recommends temurin-21-jdk \
-  && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-RUN ln -s /usr/lib/jvm/temurin-21-jdk-* /usr/lib/jvm/temurin-21-jdk
+  && apt-get clean && rm -rf /var/lib/apt/lists/* \
+  && ln -s /usr/lib/jvm/temurin-21-jdk-* /usr/lib/jvm/temurin-21-jdk; \
+  fi
 ENV JAVA_HOME=/usr/lib/jvm/temurin-21-jdk
 
 # Install Maven
 ARG MAVEN_VERSION=3.9.9
-RUN curl -fsSL https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz \
+RUN if [ "$ENABLE_JAVA" = "true" ]; then \
+  curl -fsSL https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz \
   | tar -xz -C /opt \
-  && ln -s /opt/apache-maven-${MAVEN_VERSION}/bin/mvn /usr/local/bin/mvn
+  && ln -s /opt/apache-maven-${MAVEN_VERSION}/bin/mvn /usr/local/bin/mvn; \
+  fi
 
 # Install Gradle
 ARG GRADLE_VERSION=8.12
-RUN curl -fsSL https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -o /tmp/gradle.zip \
+RUN if [ "$ENABLE_JAVA" = "true" ]; then \
+  curl -fsSL https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -o /tmp/gradle.zip \
   && unzip -q /tmp/gradle.zip -d /opt \
   && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/local/bin/gradle \
-  && rm /tmp/gradle.zip
+  && rm /tmp/gradle.zip; \
+  fi
 
 # Install Docker CLI and Docker Compose plugin
 RUN install -m 0755 -d /etc/apt/keyrings \
@@ -125,10 +136,11 @@ RUN pip3 install --break-system-packages uv
 USER node
 
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
-ENV PATH=$PATH:/usr/local/share/npm-global/bin:/home/node/.local/bin
+ENV PATH=$PATH:/usr/local/share/npm-global/bin:/home/node/.local/bin:/home/node/.claude/local/bin
 ENV SHELL=/bin/zsh
 ENV EDITOR=nano
 ENV VISUAL=nano
+ENV POWERLEVEL9K_DISABLE_GITSTATUS=true
 
 # Install zsh with powerline10k
 ARG ZSH_IN_DOCKER_VERSION=1.2.0
@@ -141,8 +153,9 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
   -a "alias claude-litellm='ANTHROPIC_BASE_URL=\$LITELLM_BASE_URL ANTHROPIC_AUTH_TOKEN=\$LITELLM_AUTH_TOKEN claude'" \
   -x
 
-# Install Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+# Install Claude Code CLI at build time
+COPY --chmod=755 install-claude.sh /usr/local/bin/install-claude.sh
+RUN cd /tmp && /usr/local/bin/install-claude.sh
 
 # Pre-install MCP server npm packages
 RUN npm install -g @upstash/context7-mcp @playwright/mcp @modelcontextprotocol/server-sequential-thinking
@@ -163,14 +176,17 @@ USER root
 # Install Java language server (jdtls) for Serena
 ARG JDTLS_VERSION=1.57.0
 ARG JDTLS_TIMESTAMP=202602261110
-RUN mkdir -p /opt/jdtls \
+RUN if [ "$ENABLE_JAVA" = "true" ]; then \
+  mkdir -p /opt/jdtls \
   && curl -fsSL https://download.eclipse.org/jdtls/milestones/${JDTLS_VERSION}/jdt-language-server-${JDTLS_VERSION}-${JDTLS_TIMESTAMP}.tar.gz \
   | tar -xz -C /opt/jdtls \
   && printf '#!/bin/sh\nexec java -Declipse.application=org.eclipse.jdt.ls.core.id1 -Dosgi.bundles.defaultStartLevel=4 -Declipse.product=org.eclipse.jdt.ls.core.product -jar /opt/jdtls/plugins/org.eclipse.equinox.launcher_*.jar -configuration /opt/jdtls/config_linux "$@"\n' > /usr/local/bin/jdtls \
-  && chmod +x /usr/local/bin/jdtls
+  && chmod +x /usr/local/bin/jdtls; \
+  fi
 
 RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/setup-mcp.sh && \
-  echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/bin/chmod" > /etc/sudoers.d/node-firewall && \
+  echo 'Defaults env_keep += "FIREWALL_ALLOWED_PORTS ENABLE_FIREWALL"' > /etc/sudoers.d/node-firewall && \
+  echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/bin/chmod, /usr/sbin/iptables, /usr/sbin/ip6tables" >> /etc/sudoers.d/node-firewall && \
   chmod 0440 /etc/sudoers.d/node-firewall && \
   groupadd -f docker && usermod -aG docker node
 USER node

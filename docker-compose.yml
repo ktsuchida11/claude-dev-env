@@ -25,15 +25,18 @@ services:
       context: ./.devcontainer
       args:
         TZ: Asia/Tokyo
-        CLAUDE_CODE_VERSION: latest
         GIT_DELTA_VERSION: "0.18.2"
         ZSH_IN_DOCKER_VERSION: "1.2.0"
+        ENABLE_JAVA: "${ENABLE_JAVA:-true}"
         # HTTP_PROXY: ${HTTP_PROXY:-}
         # HTTPS_PROXY: ${HTTPS_PROXY:-}
         # NO_PROXY: ${NO_PROXY:-}
     cap_add:
       - NET_ADMIN
       - NET_RAW
+    security_opt:
+      - seccomp=unconfined
+      - systempaths=unconfined
     depends_on:
       litellm:
         condition: service_healthy
@@ -45,6 +48,8 @@ services:
       - CLAUDE_CONFIG_DIR=/home/node/.claude
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - ENABLE_FIREWALL=${ENABLE_FIREWALL:-true}
+      # host.docker.internal 経由でホスト側サービスへアクセスを許可するポート
+      - FIREWALL_ALLOWED_PORTS=${FIREWALL_ALLOWED_PORTS:-443,80}
       - HOST_WORKSPACE_PATH=${PWD}/workspace
       # Proxy settings (uncomment if behind a corporate proxy)
       # - HTTP_PROXY=${HTTP_PROXY:-}
@@ -58,8 +63,6 @@ services:
       - claude-config:/home/node/.claude
       - bash-history:/commandhistory
       - /var/run/docker.sock:/var/run/docker.sock
-      - frontend-node-modules:/workspace/frontend/node_modules:ro
-      - backend-venv:/workspace/backend/.venv:ro
     user: node
     working_dir: /workspace
     stdin_open: true
@@ -68,5 +71,3 @@ services:
 volumes:
   claude-config:
   bash-history:
-  frontend-node-modules:
-  backend-venv:

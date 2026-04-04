@@ -1,3 +1,15 @@
 .env
 .claude/
-workspace
+.DS_Store
+
+# workspace全体を除外
+workspace/*
+
+# workspace/.mcp.json を追跡
+!workspace/.mcp.json
+
+# workspace/.claude/ を段階的に開放
+!workspace/.claude/
+workspace/.claude/*
+!workspace/.claude/settings.json
+!workspace/.claude/hooks/
