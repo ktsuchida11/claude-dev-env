@@ -9,10 +9,7 @@ if [ "${ENABLE_FIREWALL:-true}" = "false" ]; then
     exit 0
 fi
 
-# 1. Extract Docker DNS info BEFORE any flushing
-DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
-
-# Reset default policies to ACCEPT before flushing
+# 1. Reset default policies to ACCEPT before flushing
 # (previous run may have set them to DROP)
 iptables -P INPUT ACCEPT
 iptables -P FORWARD ACCEPT
@@ -21,27 +18,17 @@ ip6tables -P INPUT ACCEPT
 ip6tables -P FORWARD ACCEPT
 ip6tables -P OUTPUT ACCEPT
 
-# Flush existing rules and delete existing ipsets
+# Flush existing filter rules and ipsets
+# NOTE: NAT table is NOT flushed — Docker depends on it for DNS resolution
+# (127.0.0.11) and container networking. Flushing NAT would break Docker.
 iptables -F
 iptables -X
-iptables -t nat -F
-iptables -t nat -X
 iptables -t mangle -F
 iptables -t mangle -X
 ip6tables -F
 ip6tables -X
 ipset destroy allowed-domains 2>/dev/null || true
 ipset destroy allowed-domains-v6 2>/dev/null || true
-
-# 2. Selectively restore ONLY internal Docker DNS resolution
-if [ -n "$DOCKER_DNS_RULES" ]; then
-    echo "Restoring Docker DNS rules..."
-    iptables -t nat -N DOCKER_OUTPUT 2>/dev/null || true
-    iptables -t nat -N DOCKER_POSTROUTING 2>/dev/null || true
-    echo "$DOCKER_DNS_RULES" | xargs -L 1 iptables -t nat
-else
-    echo "No Docker DNS rules to restore"
-fi
 
 # Allow DNS, SSH, and localhost (IPv4)
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT

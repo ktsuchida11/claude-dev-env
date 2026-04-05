@@ -122,6 +122,7 @@ claude_dev_env/
 │   ├── Dockerfile              # LiteLLM プロキシコンテナ
 │   └── config.yaml             # モデル設定 (OpenAI / Anthropic)
 ├── docker-compose.yml          # メイン (dev + litellm)
+├── docker-compose.langfuse.yml # LangFuse ネットワーク接続用オーバーライド
 ├── workspace/                  # コンテナ内の /workspace にマウント (git 管理外)
 ├── .env.example                # 環境変数テンプレート
 ├── .env                        # APIキー等 (gitignore対象)
@@ -135,6 +136,9 @@ claude_dev_env/
 | コマンド | 起動するサービス |
 | --- | --- |
 | `docker compose up -d` | dev, litellm |
+| `docker compose -f docker-compose.yml -f docker-compose.langfuse.yml up -d` | dev, litellm（+ LangFuse ネットワーク接続） |
+
+> **LangFuse 接続の簡略化**: `.env` に `COMPOSE_FILE=docker-compose.yml:docker-compose.langfuse.yml` を設定すれば、`docker compose up -d` だけで LangFuse ネットワークにも接続される。LangFuse が未起動の場合はこの行をコメントアウトすること。
 
 ### dev コンテナ（開発用）
 
@@ -647,13 +651,17 @@ CC_LANGFUSE_PUBLIC_KEY=pk-lf-cloudkey
 CC_LANGFUSE_SECRET_KEY=sk-lf-cloudkey
 CC_LANGFUSE_BASE_URL=https://cloud.langfuse.com
 
-LANGFUSE_PUBLIC_KEY=pk-lf-selfhostkey
-LANGFUSE_SECRET_KEY=sk-lf-selfhostkey
-LANGFUSE_BASE_URL=http://host.docker.internal:3000
-LANGFUSE_HOST=http://host.docker.internal:3000
+# アプリ用の LANGFUSE_* はここ（claude-dev-env の .env）ではなく、
+# アプリ側の .env で設定すること（docker-compose 経由で空文字が注入され上書きされるため）。
+# アプリ側 .env の例:
+#   LANGFUSE_PUBLIC_KEY=pk-lf-selfhostkey
+#   LANGFUSE_SECRET_KEY=sk-lf-selfhostkey
+#   LANGFUSE_HOST=http://langfuse-web:3000
 ```
 
 > `CC_LANGFUSE_*` が未設定の場合は `LANGFUSE_*` にフォールバックする。アプリが LangFuse を使わない場合は `LANGFUSE_*` だけ設定すれば動作する。
+>
+> **注意**: アプリ用の `LANGFUSE_*` を claude-dev-env の `.env` に設定すると、コンテナ環境変数として注入され、アプリ側の `.env` の値を上書きしてしまう（pydantic-settings 等は環境変数を優先するため）。アプリ側の `.env` で管理すること。
 
 ### 無効化
 
@@ -663,8 +671,23 @@ LANGFUSE_HOST=http://host.docker.internal:3000
 
 ホスト側で LangFuse を `docker compose` で起動している場合:
 
-1. `CC_LANGFUSE_BASE_URL=http://host.docker.internal:3000`（Claude Code 用）または `LANGFUSE_BASE_URL=http://host.docker.internal:3000`（アプリ用）を設定
+#### Claude Code トレーシング（CC_LANGFUSE_*）
+
+クラウド LangFuse を使う場合はそのまま `CC_LANGFUSE_BASE_URL=https://cloud.langfuse.com` を設定。
+セルフホスト LangFuse を使う場合:
+
+1. `CC_LANGFUSE_BASE_URL=http://host.docker.internal:3000` を設定
 2. `FIREWALL_ALLOWED_PORTS` に LangFuse のポートを追加（例: `443,80,3000`）
+
+#### アプリからの接続（LANGFUSE_*）
+
+dev コンテナ内のアプリからセルフホスト LangFuse に接続するには、Docker ネットワーク経由で直接通信する:
+
+1. `.env` に `COMPOSE_FILE=docker-compose.yml:docker-compose.langfuse.yml` を設定
+2. コンテナを再起動（`docker compose up -d`）
+3. アプリの `.env` で `LANGFUSE_HOST=http://langfuse-web:3000` を設定
+
+> `host.docker.internal` 経由の HTTP 通信は Docker Desktop for Mac の制約で不安定なため、Docker ネットワーク経由の直接接続を推奨。`docker-compose.langfuse.yml` は dev コンテナを `langfuse_default` ネットワークに参加させ、LangFuse のサービス名（`langfuse-web`）で DNS 解決を可能にする。
 
 ### デバッグ
 

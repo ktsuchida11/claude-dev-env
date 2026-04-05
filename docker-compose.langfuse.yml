@@ -1,0 +1,18 @@
+# LangFuse (セルフホスト) ネットワーク接続用オーバーライド
+# dev コンテナから langfuse-web:3000 で直接接続可能にする
+#
+# 使い方:
+#   docker compose -f docker-compose.yml -f docker-compose.langfuse.yml up -d
+#
+# LangFuse が起動済みの場合のみ使用すること。
+# LangFuse が未起動の場合は本ファイルを指定せずに起動する。
+services:
+  dev:
+    networks:
+      - default
+      - langfuse
+
+networks:
+  langfuse:
+    name: langfuse_default
+    external: true

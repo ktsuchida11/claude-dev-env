@@ -60,11 +60,9 @@ services:
       - CC_LANGFUSE_SECRET_KEY=${CC_LANGFUSE_SECRET_KEY:-}
       - CC_LANGFUSE_BASE_URL=${CC_LANGFUSE_BASE_URL:-}
       - CC_LANGFUSE_DEBUG=${CC_LANGFUSE_DEBUG:-false}
-      # アプリ用 LangFuse（セルフホスト等）— アプリが直接参照する標準変数
-      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
-      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
-      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
-      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      # アプリ用 LangFuse（LANGFUSE_*）はここで設定しない。
+      # docker-compose で空文字を注入すると、アプリ側 .env の値を上書きしてしまうため。
+      # アプリの .env または docker-compose.override.yml で直接設定すること。
       # Proxy settings (uncomment if behind a corporate proxy)
       # - HTTP_PROXY=${HTTP_PROXY:-}
       # - HTTPS_PROXY=${HTTPS_PROXY:-}
