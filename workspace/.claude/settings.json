@@ -93,7 +93,13 @@
     ],
     "filesystem": {
       "allowWrite": [
-        "/workspace"
+        "/workspace",
+        "/home/node/.npm",
+        "/home/node/.cache",
+        "/home/node/.local",
+        "/home/node/.m2/repository",
+        "/home/node/.gradle",
+        "/tmp"
       ],
       "denyWrite": [
         "/home/node/.claude/settings.json",
@@ -127,7 +133,9 @@
         "accounts.google.com",
         "www.googleapis.com",
         "context7.com",
-        "*.context7.com"
+        "*.context7.com",
+        "cloud.langfuse.com",
+        "us.cloud.langfuse.com"
       ],
       "allowLocalBinding": true,
       "allowAllUnixSockets": true
@@ -150,6 +158,10 @@
           {
             "type": "command",
             "command": "bash /workspace/.claude/hooks/block-dangerous.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash /workspace/.claude/hooks/supply-chain-guard.sh"
           }
         ]
       }
@@ -163,11 +175,31 @@
             "command": "bash /workspace/.claude/hooks/lint-on-save.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /workspace/.claude/hooks/supply-chain-audit.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /workspace/.claude/hooks/langfuse_hook.py"
+          }
+        ]
       }
     ]
   },
 
   "env": {
-    "CLAUDE_CODE_ENABLE_TELEMETRY": "0"
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "0",
+    "PIP_CONFIG_FILE": "/workspace/.pip.conf"
   }
 }

@@ -128,7 +128,9 @@ for domain in \
     "vscode.blob.core.windows.net" \
     "update.code.visualstudio.com" \
     "api.openai.com" \
-    "openaipublic.blob.core.windows.net"; do
+    "openaipublic.blob.core.windows.net" \
+    "cloud.langfuse.com" \
+    "us.cloud.langfuse.com"; do
     echo "Resolving $domain..."
 
     # IPv4 (A records)

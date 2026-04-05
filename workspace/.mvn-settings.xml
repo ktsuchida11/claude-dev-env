@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Supply Chain Security: Maven settings
+  Maven Central のみをリポジトリとして使用（dependency confusion 対策）
+  使用方法: mvn -s /workspace/.mvn-settings.xml ...
+  または環境変数: MAVEN_SETTINGS=/workspace/.mvn-settings.xml
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0
+                              https://maven.apache.org/xsd/settings-1.2.0.xsd">
+  <mirrors>
+    <mirror>
+      <id>central-only</id>
+      <mirrorOf>*</mirrorOf>
+      <name>Maven Central Only</name>
+      <url>https://repo1.maven.org/maven2</url>
+    </mirror>
+  </mirrors>
+</settings>

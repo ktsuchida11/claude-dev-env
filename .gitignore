@@ -13,3 +13,12 @@ workspace/*
 workspace/.claude/*
 !workspace/.claude/settings.json
 !workspace/.claude/hooks/
+!workspace/.claude/tests/
+
+# workspace直下のサプライチェーン対策設定ファイルを追跡
+!workspace/.npmrc
+!workspace/.pip.conf
+!workspace/.mvn-settings.xml
+
+# workspace/CLAUDE.md を追跡
+!workspace/CLAUDE.md

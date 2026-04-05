@@ -18,10 +18,14 @@ fi
 
 # --- 破壊的コマンドのパターン検出 ---
 
-# rm -rf with dangerous targets
-if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|--force\s+)*(\/|~|\$HOME|\.\.)'; then
-  echo '{"decision": "block", "reason": "Blocked: rm -rf with dangerous target path"}' >&2
-  exit 2
+# rm -rf with dangerous targets (/, ~, $HOME, ..)
+# /workspace 配下の削除は許可する（開発上の正常操作）
+if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+)*(\/|~|\$HOME|\.\.)'; then
+  # /workspace 配下への rm は許可
+  if ! echo "$COMMAND" | grep -qE 'rm\s+.*\/workspace\/'; then
+    echo '{"decision": "block", "reason": "Blocked: rm -rf with dangerous target path"}' >&2
+    exit 2
+  fi
 fi
 
 # curl/wget through pipes or subshells (bypass attempt)
@@ -66,8 +70,8 @@ if echo "$COMMAND" | grep -qE 'chmod\s+777'; then
   exit 2
 fi
 
-# Modification of settings files
-if echo "$COMMAND" | grep -qE '(>|>>|tee)\s*.*/(settings\.json|\.claude\.json|\.mcp\.json)'; then
+# Modification of settings files (パス付き・相対パス両方をカバー)
+if echo "$COMMAND" | grep -qE '(>|>>|tee)\s*.*(settings\.json|\.claude\.json|\.mcp\.json)'; then
   echo '{"decision": "block", "reason": "Blocked: modification of Claude Code settings files"}' >&2
   exit 2
 fi

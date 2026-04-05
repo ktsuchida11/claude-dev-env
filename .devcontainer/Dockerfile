@@ -129,11 +129,18 @@ RUN ARCH=$(dpkg --print-architecture) && \
   sudo dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
   rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
-# Install uv (provides uvx for running Serena MCP server)
-RUN pip3 install --break-system-packages uv
+# Install uv (provides uvx for running Serena MCP server), langfuse (tracing hook), pip-audit (supply chain audit)
+RUN pip3 install --break-system-packages uv langfuse pip-audit
 
 # Set up non-root user
 USER node
+
+# Supply chain: Maven settings symlink (mvn auto-reads ~/.m2/settings.xml)
+RUN mkdir -p /home/node/.m2 && \
+  ln -s /workspace/.mvn-settings.xml /home/node/.m2/settings.xml
+# Supply chain: pip config symlink (pip/uv auto-reads this path)
+RUN mkdir -p /home/node/.config/pip && \
+  ln -s /workspace/.pip.conf /home/node/.config/pip/pip.conf
 
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=$PATH:/usr/local/share/npm-global/bin:/home/node/.local/bin:/home/node/.claude/local/bin
