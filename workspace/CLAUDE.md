@@ -33,11 +33,11 @@
 
 ### 言語・ランタイム
 
-| 言語 | バージョン | パッケージマネージャ | Linter | Formatter |
-|------|-----------|-------------------|--------|-----------|
-| TypeScript / JavaScript | Node.js 20 | npm | ESLint 9 | Prettier |
-| Python | 3.12 | uv | Ruff | Ruff format |
-| Java | JDK 21 (Temurin) | Maven / Gradle | - | - |
+| 言語                    | バージョン       | パッケージマネージャ | Linter   | Formatter   |
+| ----------------------- | ---------------- | -------------------- | -------- | ----------- |
+| TypeScript / JavaScript | Node.js 20       | npm                  | ESLint 9 | Prettier    |
+| Python                  | 3.12             | uv                   | Ruff     | Ruff format |
+| Java                    | JDK 21 (Temurin) | Maven / Gradle       | -        | -           |
 
 ### MCP サーバー（利用可能）
 
@@ -92,6 +92,9 @@ ANTHROPIC_MODEL=gpt-4o claude-litellm
 - テストを書いてから実装する（TDD推奨）
 - 1PRあたりの変更は小さく保つ（300行以内目安）
 - PR作成前に lint + format + type check を実行する
+- 作業を始める前に必ず作業計画を立て作業ごとに完了定義を行う
+- 作業は必ずブランチを作成して対応する
+- 作業タスクが大きい場合は分割してISSUEに登録して作業を分ける
 
 ### TypeScript
 
