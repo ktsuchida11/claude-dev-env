@@ -2,31 +2,31 @@
 .env
 .env.local
 
-# === ローカル設定（git管理外） ===
-.claude/
+# === ローカル設定 ===
 .DS_Store
+.claude/settings.local.json
 
 # === ログ・キャッシュ ===
 *.log
 
+# === .claude/ — ルートが正（hooks, tests, settings.json を git 管理） ===
+# ※ .claude/ 自体は追跡対象（ホスト Mac 用設定 + ポータブル hooks/tests）
+
 # === workspace 管理 ===
-# workspace全体を除外し、必要なファイルのみ追跡
+# workspace 全体を除外し、必要なファイルのみ追跡
 workspace/*
 
 # workspace/.mcp.json を追跡
 !workspace/.mcp.json
 
-# workspace/.claude/ を段階的に開放
+# workspace/.claude/ — settings.json のみ追跡（コンテナ用パス）
+# hooks と tests は .claude/ が正。DevContainer 起動時にコピーされる
 !workspace/.claude/
 workspace/.claude/*
 !workspace/.claude/settings.json
-!workspace/.claude/hooks/
-!workspace/.claude/tests/
-
-# workspace/.claude/ のランタイム状態は除外
 workspace/.claude/state/
 
-# workspace直下のサプライチェーン対策設定ファイルを追跡
+# workspace 直下のサプライチェーン対策設定ファイルを追跡
 !workspace/.npmrc
 !workspace/.pip.conf
 !workspace/.mvn-settings.xml

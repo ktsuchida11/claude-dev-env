@@ -44,5 +44,5 @@
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
   },
-  "postStartCommand": "sudo chmod 666 /var/run/docker.sock || true && /usr/local/bin/setup-mcp.sh && (sudo /usr/local/bin/init-firewall.sh || echo 'Firewall init skipped (requires NET_ADMIN capability)') && (bash /workspace/cooldown_management/cooldown-update.sh 7 || echo 'Cooldown update skipped')"
+  "postStartCommand": "sudo chmod 666 /var/run/docker.sock || true && mkdir -p /workspace/.claude/hooks /workspace/.claude/tests && cp -f /workspace/.claude-source/hooks/* /workspace/.claude/hooks/ 2>/dev/null && cp -f /workspace/.claude-source/tests/* /workspace/.claude/tests/ 2>/dev/null && echo 'Hooks/tests synced from .claude-source' && /usr/local/bin/setup-mcp.sh && (sudo /usr/local/bin/init-firewall.sh || echo 'Firewall init skipped (requires NET_ADMIN capability)') && (bash /workspace/cooldown_management/cooldown-update.sh 7 || echo 'Cooldown update skipped')"
 }

@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Bash(git *)",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(npm uninstall *)",
+      "Bash(npm test *)",
+      "Bash(npm exec *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(uv *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(pip *)",
+      "Bash(gradle *)",
+      "Bash(mvn *)",
+      "Bash(gh *)",
+      "Bash(make *)",
+      "Bash(docker compose *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(wc *)",
+      "Bash(sort *)",
+      "Bash(diff *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(touch *)",
+      "Bash(chmod *)",
+      "Bash(echo *)",
+      "Bash(cd *)",
+      "Bash(pwd)",
+      "Bash(which *)",
+      "Bash(env)",
+      "Bash(printenv *)",
+      "Bash(tree *)",
+      "Bash(jq *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(pytest *)",
+      "Bash(tsc *)",
+      "Bash(eslint *)",
+      "Bash(prettier *)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf ~/*)",
+      "Bash(find * -delete)",
+      "Bash(find * -exec rm *)",
+      "Bash(find * -exec shred *)",
+      "Bash(* xargs rm *)",
+      "Bash(* xargs shred *)",
+      "Bash(* | xargs rm *)",
+      "Bash(* | xargs shred *)",
+      "Bash(* sed -i * settings.json*)",
+      "Bash(* sed -i * .claude.json*)",
+      "Bash(* sed -i * .mcp.json*)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(nc *)",
+      "Bash(ncat *)",
+      "Bash(telnet *)",
+      "Bash(ftp *)",
+      "Bash(sudo *)",
+      "Bash(chmod 777 *)",
+      "Bash(eval *)",
+      "Bash(exec *)",
+      "Bash(nohup *)",
+      "Bash(crontab *)",
+      "Bash(python -c *import*socket*)",
+      "Bash(python3 -c *import*socket*)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.gnupg/**)",
+      "Read(/etc/shadow)",
+      "Read(/etc/gshadow)",
+      "Read(./secrets/**)",
+      "WebFetch"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  },
+
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "excludedCommands": [
+      "docker *",
+      "gh *"
+    ],
+    "filesystem": {
+      "allowWrite": [
+        "/Users/tsuchitakouji/pg_work_space/mra_chat_01/claude-dev-env/workspace",
+        "~/.npm",
+        "~/.cache",
+        "~/.local",
+        "~/.m2/repository",
+        "~/.gradle",
+        "/tmp"
+      ],
+      "denyWrite": [
+        "/Users/tsuchitakouji/pg_work_space/mra_chat_01/claude-dev-env/.claude/settings.json",
+        "/Users/tsuchitakouji/pg_work_space/mra_chat_01/claude-dev-env/.claude/settings.local.json",
+        "/etc"
+      ],
+      "denyRead": [
+        "~/.ssh",
+        "~/.aws",
+        "~/.gnupg"
+      ]
+    },
+    "network": {
+      "allowedDomains": [
+        "github.com",
+        "*.github.com",
+        "*.githubusercontent.com",
+        "registry.npmjs.org",
+        "*.npmjs.org",
+        "registry.yarnpkg.com",
+        "raw.githubusercontent.com",
+        "codeload.github.com",
+        "objects.githubusercontent.com",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "api.anthropic.com",
+        "claude.ai",
+        "api.openai.com",
+        "openaipublic.blob.core.windows.net",
+        "oauth2.googleapis.com",
+        "accounts.google.com",
+        "www.googleapis.com",
+        "context7.com",
+        "*.context7.com",
+        "cloud.langfuse.com",
+        "us.cloud.langfuse.com"
+      ],
+      "allowLocalBinding": true,
+      "allowAllUnixSockets": true
+    }
+  },
+
+  "enableAllProjectMcpServers": false,
+  "enabledMcpjsonServers": [
+    "context7",
+    "playwright",
+    "serena",
+    "sequential-thinking"
+  ],
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/block-dangerous.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/supply-chain-guard.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/lint-on-save.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/dockerfile-cooldown-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/gha-security-check.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/dockerfile-cooldown-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/gha-security-check.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/supply-chain-audit.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $CLAUDE_PROJECT_DIR/.claude/hooks/langfuse_hook.py"
+          }
+        ]
+      }
+    ]
+  },
+
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "0",
+    "PIP_CONFIG_FILE": "/Users/tsuchitakouji/pg_work_space/mra_chat_01/claude-dev-env/workspace/.pip.conf"
+  }
+}

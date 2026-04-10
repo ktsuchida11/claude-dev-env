@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# sync-hooks.sh — workspace/.claude/ のフック・テストをルート .claude/ に同期
+# sync-hooks.sh — .claude/ のフック・テストを workspace/.claude/ に同期
 #
 # 用途:
-#   workspace/.claude/ は DevContainer 内での Claude Code 設定（正）
-#   .claude/ はホスト Mac で Claude Code を直接使う場合の設定
-#   hooks とテストは共通なので、workspace 版を正として同期する
+#   .claude/ はプロジェクトルートの正規設定（git 管理対象）
+#   workspace/.claude/ は DevContainer 内で Claude Code が参照する設定
+#   hooks とテストは .claude/ を正として workspace にコピーする
+#   DevContainer 起動時に postStartCommand で自動コピーされるが、
+#   ローカルで編集した場合はこのスクリプトで手動同期も可能
 #
 # 使い方:
 #   bash scripts/sync-hooks.sh          # 差異チェック（デフォルト）
@@ -18,10 +20,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-SRC_HOOKS="$PROJECT_ROOT/workspace/.claude/hooks"
-DST_HOOKS="$PROJECT_ROOT/.claude/hooks"
-SRC_TESTS="$PROJECT_ROOT/workspace/.claude/tests"
-DST_TESTS="$PROJECT_ROOT/.claude/tests"
+SRC_HOOKS="$PROJECT_ROOT/.claude/hooks"
+DST_HOOKS="$PROJECT_ROOT/workspace/.claude/hooks"
+SRC_TESTS="$PROJECT_ROOT/.claude/tests"
+DST_TESTS="$PROJECT_ROOT/workspace/.claude/tests"
 
 MODE="${1:---check}"
 
@@ -66,7 +68,7 @@ sync_dir() {
         cp "$src_file" "$dst_file"
         echo -e "${GREEN}[COPY]${NC} $label/$filename (新規)"
       else
-        echo -e "${YELLOW}[NEW]${NC}  $label/$filename — ルート側に存在しません"
+        echo -e "${YELLOW}[NEW]${NC}  $label/$filename — workspace 側に存在しません"
       fi
     elif ! diff -q "$src_file" "$dst_file" > /dev/null 2>&1; then
       has_diff=1
@@ -87,8 +89,8 @@ sync_dir() {
 }
 
 echo "=== Claude Code Hooks 同期ツール ==="
-echo "ソース: workspace/.claude/ (DevContainer 用 = 正)"
-echo "宛先:   .claude/ (ホスト Mac 用)"
+echo "ソース: .claude/ (git 管理 = 正)"
+echo "宛先:   workspace/.claude/ (DevContainer 用)"
 echo ""
 
 if [ "$MODE" = "--apply" ]; then

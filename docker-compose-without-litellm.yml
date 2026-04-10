@@ -35,6 +35,7 @@ services:
       # - no_proxy=${NO_PROXY:-}
     volumes:
       - ./workspace:/workspace:delegated
+      - ./.claude:/workspace/.claude-source:ro
       - ./cooldown_management:/workspace/cooldown_management:ro
       - claude-config:/home/node/.claude
       - bash-history:/commandhistory
