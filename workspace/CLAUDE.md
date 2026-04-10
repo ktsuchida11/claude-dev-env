@@ -210,7 +210,39 @@ bash /workspace/.claude/tests/hook-test.sh
 
 ## トラブルシューティング
 
-- **MCP サーバーが動かない**: Claude Code内で `/mcp` を実行して4サーバーが表示されるか確認
-- **外部通信がブロックされる**: ファイアウォールの許可リスト外。`ENABLE_FIREWALL=false` で一時無効化して切り分け
-- **権限エラー**: `/workspace` 以外への書き込みはSandboxでブロックされる
-- **設定がおかしい**: `/doctor` で環境診断、`/status` で設定確認
+### MCP・Claude Code
+
+| 症状 | 原因 | 対処法 |
+|------|------|--------|
+| MCP サーバーが表示されない | 設定未反映 | `/mcp` で確認。`/usr/local/bin/setup-mcp.sh` を手動実行 |
+| MCP サーバーがタイムアウトする | npx 初回ダウンロード | ファイアウォール有効時は `registry.npmjs.org` が許可されているか確認 |
+| Claude Code ログインできない | OAuth 認証エラー | `claude.ai` がファイアウォール許可リストにあるか確認。`ENABLE_FIREWALL=false` で切り分け |
+| 設定がおかしい | 設定ファイル破損 | `/doctor` で環境診断、`/status` で設定確認 |
+| Claude Code が見つからない | インストール未完了 | `bash /usr/local/bin/install-claude.sh` で再インストール |
+
+### ネットワーク
+
+| 症状 | 原因 | 対処法 |
+|------|------|--------|
+| 外部通信がブロックされる | ファイアウォール許可リスト外 | `.env` で `ENABLE_FIREWALL=false` → 再起動で切り分け |
+| DNS 解決が失敗する | ファイアウォール初期化失敗 | `sudo /usr/local/bin/init-firewall.sh` を手動実行。DNS (port 53) は許可済み |
+| プロキシ環境で接続できない | プロキシ未設定 | `docker-compose.yml` の `HTTP_PROXY` 行をアンコメント。Dockerfile も同様 |
+| LiteLLM に接続できない | サービス未起動 | `docker compose ps` で litellm の状態確認。ヘルスチェック失敗なら `docker compose logs litellm` |
+
+### ファイルシステム・権限
+
+| 症状 | 原因 | 対処法 |
+|------|------|--------|
+| 書き込み権限エラー | Sandbox 制限 | `/workspace` 内でのみ作業可能。`/etc` 等への書き込みはブロック |
+| `npm install` でエラー | `ignore-scripts=true` | ネイティブモジュールは `npm rebuild <package>` で再ビルド |
+| pip パッケージが見つからない | クールダウン日付が古い | `bash /workspace/cooldown_management/cooldown-update.sh` で更新 |
+| ボリューム権限エラー | Docker ボリューム所有者不一致 | `docker compose down -v` でボリューム再作成（データは消える） |
+
+### Docker ビルド
+
+| 症状 | 原因 | 対処法 |
+|------|------|--------|
+| ビルドが途中で失敗 | ネットワーク or パッケージ取得失敗 | `docker compose build --no-cache` で再ビルド |
+| ビルドが非常に遅い | キャッシュ無効化 | Dockerfile の変更箇所以降のみ再ビルドされる。apt-get 層は安定 |
+| `NET_ADMIN` エラー | capability 不足 | `docker-compose.yml` の `cap_add: [NET_ADMIN, NET_RAW]` を確認 |
+| ディスク容量不足 | Docker イメージ肥大化 | `docker system prune -a` で未使用イメージを削除 |

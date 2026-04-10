@@ -16,8 +16,20 @@ ENV TZ="$TZ"
 #     https_proxy=${HTTPS_PROXY} \
 #     no_proxy=${NO_PROXY}
 
+# --- npm upgrade (早期実行: 後続の npm install に min-release-age を適用するため) ---
+# node:22 には npm 10.x が同梱。min-release-age は npm >= 11.10.0 で必要
+RUN npm_ver=$(npm --version) && \
+  echo "Current npm: v${npm_ver}" && \
+  npm install -g "npm@>=11.10.0" && \
+  echo "Updated npm: v$(npm --version)"
 
-# Install basic development tools and iptables/ipset
+# Supply chain: ビルド時の npm にもクールダウンを適用
+# workspace/.npmrc はビルド時にマウントされないため、グローバル設定で適用
+RUN npm config set -g ignore-scripts true && \
+  npm config set -g save-exact true && \
+  npm config set -g min-release-age 7
+
+# --- Layer 1: 基本開発ツール ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
   less \
   git \
@@ -36,14 +48,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libsecret-1-dev \
   ripgrep \
   postgresql-client \
+  jq \
+  nano \
+  vim \
+  python3 \
+  python3-pip \
+  python3-venv \
+  ca-certificates \
+  curl \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# --- Layer 2: ネットワーク・ファイアウォール ---
+RUN apt-get update && apt-get install -y --no-install-recommends \
   iptables \
   ipset \
   iproute2 \
   dnsutils \
   aggregate \
-  jq \
-  nano \
-  vim \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# --- Layer 3: ブラウザ依存ライブラリ（Playwright 用） ---
+RUN apt-get update && apt-get install -y --no-install-recommends \
   libnss3 \
   libatk-bridge2.0-0 \
   libdrm2 \
@@ -58,14 +83,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libcups2 \
   libdbus-1-3 \
   libx11-xcb1 \
-  python3 \
-  python3-pip \
-  python3-venv \
-  ca-certificates \
-  curl \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Java environment (optional, controlled by ENABLE_JAVA build arg)
+# --- Java environment (optional, controlled by ENABLE_JAVA build arg) ---
 ARG ENABLE_JAVA=true
 
 # Install Java (Eclipse Temurin JDK 21)
@@ -96,7 +116,7 @@ RUN if [ "$ENABLE_JAVA" = "true" ]; then \
   && rm /tmp/gradle.zip; \
   fi
 
-# Install Docker CLI and Docker Compose plugin
+# --- Docker CLI and Docker Compose plugin ---
 RUN install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
   && chmod a+r /etc/apt/keyrings/docker.asc \
@@ -105,12 +125,7 @@ RUN install -m 0755 -d /etc/apt/keyrings \
   && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Supply chain: ビルド時の npm にもクールダウンを適用
-# workspace/.npmrc はビルド時にマウントされないため、グローバル設定で適用
-RUN npm config set -g ignore-scripts true && \
-  npm config set -g save-exact true && \
-  npm config set -g min-release-age 7
-
+# --- Misc setup ---
 # Ensure default node user has access to /usr/local/share
 RUN mkdir -p /usr/local/share/npm-global && \
   chown -R node:node /usr/local/share
@@ -137,25 +152,15 @@ RUN ARCH=$(dpkg --print-architecture) && \
   sudo dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
   rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
-# Supply chain: クールダウン対応の最小バージョン
-# - npm >= 11.10.0 (min-release-age) → node:22 には npm 10.x が同梱のためアップグレード
-# - pip >= 26.0    (uploaded-prior-to)
-# - uv  >= 0.6.0   (exclude-newer)
-RUN npm_ver=$(npm --version) && \
-  echo "Current npm: v${npm_ver}" && \
-  npm install -g "npm@>=11.10.0" && \
-  echo "Updated npm: v$(npm --version)"
-
-# Install uv (provides uvx for running Serena MCP server), langfuse (tracing hook), pip-audit (supply chain audit)
+# --- Python tooling ---
 # pip 自体もクールダウン対応バージョン（>= 26.0）にアップグレード
-# ビルド時の pip install にも --uploaded-prior-to を付与
 # ※ pip/uv 自体のインストールにはクールダウンを適用しない（ブートストラップ）
 RUN pip3 install --break-system-packages --upgrade pip && \
   pip3 install --break-system-packages uv && \
   COOLDOWN_DATE=$(date -u -d '7 days ago' +%Y-%m-%d 2>/dev/null || date -u -v-7d +%Y-%m-%d) && \
   pip3 install --break-system-packages --uploaded-prior-to="$COOLDOWN_DATE" langfuse pip-audit
 
-# Set up non-root user
+# --- Non-root user setup ---
 USER node
 
 # Supply chain: Maven settings symlink (mvn auto-reads ~/.m2/settings.xml)
@@ -190,9 +195,10 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
 COPY --chmod=755 install-claude.sh /usr/local/bin/install-claude.sh
 RUN cd /tmp && /usr/local/bin/install-claude.sh
 
-# Pre-install MCP server npm packages
-# min-release-age はグローバル設定済み、ignore-scripts も明示的に付与
-RUN npm install -g --ignore-scripts @upstash/context7-mcp @playwright/mcp @modelcontextprotocol/server-sequential-thinking
+# --- MCP server npm packages (個別インストールで1つの失敗が他に影響しない) ---
+RUN npm install -g --ignore-scripts @upstash/context7-mcp || echo "WARN: context7-mcp install failed"
+RUN npm install -g --ignore-scripts @playwright/mcp || echo "WARN: playwright-mcp install failed"
+RUN npm install -g --ignore-scripts @modelcontextprotocol/server-sequential-thinking || echo "WARN: sequential-thinking install failed"
 
 # Install Playwright Chromium browser
 RUN npx playwright install chromium

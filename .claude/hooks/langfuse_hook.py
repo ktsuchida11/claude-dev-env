@@ -63,11 +63,17 @@ def error(msg: str) -> None:
 
 
 # ----------------- State locking (best-effort) -----------------
+class LockAcquisitionFailed(Exception):
+    """ファイルロックの取得に失敗した場合の例外"""
+    pass
+
+
 class FileLock:
     def __init__(self, path: Path, timeout_s: float = 2.0):
         self.path = path
         self.timeout_s = timeout_s
         self._fh = None
+        self._locked = False
 
     def __enter__(self):
         STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -78,25 +84,45 @@ class FileLock:
             while True:
                 try:
                     fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self._locked = True
                     break
                 except BlockingIOError:
                     if time.time() > deadline:
-                        break
+                        warn(
+                            f"Lock acquisition timed out after {self.timeout_s}s "
+                            f"(path={self.path}). Skipping write to prevent corruption."
+                        )
+                        self._fh.close()
+                        self._fh = None
+                        raise LockAcquisitionFailed(
+                            f"Timed out waiting for lock: {self.path}"
+                        )
                     time.sleep(0.05)
-        except Exception:
-            pass
+        except LockAcquisitionFailed:
+            raise
+        except ImportError:
+            # fcntl unavailable (Windows) — proceed without locking
+            warn("fcntl not available, proceeding without file lock")
+            self._locked = False
+        except OSError as e:
+            warn(f"Lock acquisition failed with OS error: {e}")
+            self._fh.close()
+            self._fh = None
+            raise LockAcquisitionFailed(f"OS error acquiring lock: {e}")
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        try:
-            import fcntl
-            fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
-        except Exception:
-            pass
-        try:
-            self._fh.close()
-        except Exception:
-            pass
+        if self._fh is not None:
+            if self._locked:
+                try:
+                    import fcntl
+                    fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+                except Exception:
+                    pass
+            try:
+                self._fh.close()
+            except Exception:
+                pass
 
 
 def load_state() -> Dict[str, Any]:
@@ -617,8 +643,13 @@ def main() -> int:
         info(f"Processed {emitted} turns in {dur:.2f}s (session={session_id})")
         return 0
 
+    except LockAcquisitionFailed:
+        # ロック取得失敗 — データ破損防止のため書き込みをスキップ
+        # 次回の hook 実行時にリトライされる
+        return 0
+
     except Exception as e:
-        debug(f"Unexpected failure: {e}")
+        error(f"Unexpected failure: {type(e).__name__}: {e}")
         return 0
 
     finally:
