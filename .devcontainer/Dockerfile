@@ -1,4 +1,6 @@
-FROM node:22
+# ベースイメージを SHA256 ダイジェストでピン留め（サプライチェーン対策）
+# 更新時: docker pull node:22 && docker inspect --format='{{index .RepoDigests 0}}' node:22
+FROM node:22@sha256:ecabd1cb6956d7acfffe8af6bbfbe2df42362269fd28c227f36367213d0bb777
 
 ARG TZ
 ENV TZ="$TZ"

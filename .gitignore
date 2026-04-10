@@ -24,6 +24,8 @@ workspace/*
 !workspace/.claude/
 workspace/.claude/*
 !workspace/.claude/settings.json
+workspace/.claude/hooks/
+workspace/.claude/tests/
 workspace/.claude/state/
 
 # workspace 直下のサプライチェーン対策設定ファイルを追跡
