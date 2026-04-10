@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  脅威情報更新 — 日次自動実行
+
+  セットアップ:
+    cp threat-intel-updater.sh ~/bin/
+    chmod +x ~/bin/threat-intel-updater.sh
+    sed "s|__HOME__|$HOME|g" com.zui.threat-intel-update.plist \
+      > ~/Library/LaunchAgents/com.zui.threat-intel-update.plist
+    launchctl load ~/Library/LaunchAgents/com.zui.threat-intel-update.plist
+-->
+<dict>
+    <key>Label</key>
+    <string>com.zui.threat-intel-update</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-l</string>
+        <string>__HOME__/bin/threat-intel-updater.sh</string>
+    </array>
+    <!-- 毎日 7:00 に実行 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>__HOME__/.security-ioc/launchd-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.security-ioc/launchd-stderr.log</string>
+</dict>
+</plist>

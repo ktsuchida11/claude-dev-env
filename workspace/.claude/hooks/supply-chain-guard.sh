@@ -68,7 +68,7 @@ BLOCK=""
 check_lockfile() {
   local cmd_dir
   # コマンドに cd が含まれる場合はそのディレクトリを使う
-  cmd_dir=$(echo "$COMMAND" | grep -oP '(?<=cd\s)[^\s;&]+' | head -1 || true)
+  cmd_dir=$(echo "$COMMAND" | sed -nE 's/.*cd[[:space:]]+([^[:space:];&]+).*/\1/p' | head -1 || true)
 
   if [ -n "$NPM_INSTALL" ]; then
     # npm install <package> の場合はlockfileチェック不要（追加なので）
@@ -181,13 +181,15 @@ check_typosquatting() {
   if [ -n "$NPM_INSTALL" ]; then
     # npm install <pkg1> <pkg2> ... からパッケージ名を抽出
     # フラグ (--save-dev, -D 等) とスコープ付きパッケージ (@scope/name) に対応
-    packages=($(echo "$COMMAND" | grep -oE '(npm\s+(install|i|add)\s+)(.+)' | sed 's/npm\s\+\(install\|i\|add\)\s\+//' | tr ' ' '\n' | grep -vE '^-' | sed 's/@[0-9^~><=].*$//' || true))
+    packages=($(echo "$COMMAND" | sed -nE 's/.*npm[[:space:]]+(install|i|add)[[:space:]]+//p' | tr ' ' '\n' | grep -vE '^-' | sed 's/@[0-9^~><=].*$//' || true))
     popular_list=("${NPM_POPULAR[@]}")
   elif [ -n "$PIP_INSTALL" ]; then
     # pip install <pkg1> <pkg2> ... からパッケージ名を抽出
-    packages=($(echo "$COMMAND" | grep -oE '(pip3?\s+install|uv\s+(pip\s+install|add))\s+(.+)' | sed 's/.*install\s\+//' | sed 's/.*add\s\+//' | tr ' ' '\n' | grep -vE '^-' | sed 's/[><=!].*$//' | sed 's/\[.*\]$//' || true))
+    packages=($(echo "$COMMAND" | sed -nE 's/.*(install|add)[[:space:]]+//p' | tr ' ' '\n' | grep -vE '^-' | sed 's/[><=!].*$//' | sed 's/\[.*\]$//' || true))
     popular_list=("${PIP_POPULAR[@]}")
   fi
+
+  [ ${#packages[@]} -eq 0 ] && return
 
   # パッケージ名を正規化（スコープ除去・小文字化）
   local normalized=()
@@ -258,11 +260,100 @@ check_malicious_patterns() {
   fi
 }
 
+# --- 4. クールダウン確認 ---
+# npm: min-release-age=7 (.npmrc) — ネイティブサポート（npm v11.10.0+）
+# uv:  exclude-newer = "<日時>" (uv.toml) — RFC 3339 絶対日時、cooldown-update.sh で更新
+# pip: uploaded-prior-to (pip.conf) — 絶対日付のため定期更新が必要
+#
+# このセクションはネイティブ設定の有効性を確認・補完する
+
+COOLDOWN_DAYS="${SUPPLY_CHAIN_COOLDOWN_DAYS:-7}"
+
+verify_cooldown() {
+  if [ -n "$NPM_INSTALL" ]; then
+    # .npmrc に min-release-age が設定されているか確認
+    local npmrc_found=""
+    for f in ./.npmrc ../../../.npmrc /workspace/.npmrc; do
+      if [ -f "$f" ] && grep -q 'min-release-age' "$f" 2>/dev/null; then
+        npmrc_found="true"
+        break
+      fi
+    done
+    if [ -n "$npmrc_found" ]; then
+      show_header
+      echo "  [OK] Cooldown: min-release-age=${COOLDOWN_DAYS} (.npmrc)" >&2
+    else
+      show_header
+      echo "  [WARN] Cooldown: .npmrc に min-release-age が未設定です" >&2
+      echo "         npm v11.10.0+ では min-release-age=7 を推奨します" >&2
+    fi
+    # --min-release-age=0 でバイパスしようとしている場合は警告
+    if echo "$COMMAND" | grep -qE '\-\-min-release-age\s*=\s*0'; then
+      show_header
+      echo "  [WARN] Cooldown: min-release-age=0 でクールダウンがバイパスされます" >&2
+      echo "         緊急のセキュリティパッチ適用時のみ使用してください" >&2
+    fi
+  fi
+
+  if [ -n "$PIP_INSTALL" ]; then
+    if echo "$COMMAND" | grep -qE '^\s*uv\s+(pip\s+install|add)\b'; then
+      # uv: uv.toml の exclude-newer を確認
+      local uvtoml_found=""
+      for f in ./uv.toml ../../../uv.toml /workspace/uv.toml; do
+        if [ -f "$f" ] && grep -q 'exclude-newer' "$f" 2>/dev/null; then
+          uvtoml_found="true"
+          break
+        fi
+      done
+      if [ -n "$uvtoml_found" ]; then
+        show_header
+        echo "  [OK] Cooldown: exclude-newer=P${COOLDOWN_DAYS}D (uv.toml)" >&2
+      else
+        show_header
+        echo "  [WARN] Cooldown: uv.toml に exclude-newer が未設定です" >&2
+        echo "         exclude-newer = \"<7日前の日時>\" を推奨します（cooldown-update.sh で更新）" >&2
+      fi
+      # --exclude-newer で現在時刻（バイパス）を指定している場合は警告
+      if echo "$COMMAND" | grep -qE '\-\-exclude-newer\s+.*\$\(date'; then
+        show_header
+        echo "  [WARN] Cooldown: exclude-newer に現在時刻が指定されています（バイパス）" >&2
+      fi
+
+    elif echo "$COMMAND" | grep -qE '^\s*(pip|pip3)\s+install\b'; then
+      # pip: pip.conf の uploaded-prior-to を確認
+      local pipconf="/workspace/.pip.conf"
+      if [ -f "$pipconf" ] && grep -q 'uploaded-prior-to' "$pipconf" 2>/dev/null; then
+        local pip_date
+        pip_date=$(grep 'uploaded-prior-to' "$pipconf" | head -1 | sed 's/.*=\s*//' | tr -d ' ')
+        show_header
+        echo "  [OK] Cooldown: uploaded-prior-to=$pip_date (pip.conf)" >&2
+        # 日付が古すぎないか警告（14日以上前）
+        local pip_epoch today_epoch
+        pip_epoch=$(date -d "$pip_date" +%s 2>/dev/null || date -jf "%Y-%m-%d" "$pip_date" +%s 2>/dev/null || echo "0")
+        today_epoch=$(date +%s)
+        if [ "$pip_epoch" != "0" ]; then
+          local age_days=$(( (today_epoch - pip_epoch) / 86400 ))
+          if [ "$age_days" -gt 14 ]; then
+            echo "  [WARN] pip.conf の uploaded-prior-to が ${age_days} 日前です" >&2
+            echo "         新しいパッケージをインストールできない可能性があります" >&2
+            echo "         値を更新してください（推奨: 7日前の日付）" >&2
+          fi
+        fi
+      else
+        show_header
+        echo "  [WARN] Cooldown: pip.conf に uploaded-prior-to が未設定です" >&2
+        echo "         代わりに uv の使用を推奨します（相対日付サポート）" >&2
+      fi
+    fi
+  fi
+}
+
 # --- チェック実行 ---
 
 check_lockfile
 check_typosquatting
 check_malicious_patterns
+verify_cooldown
 
 # ヘッダが表示されていない = インストールだがチェック対象なし（フラグのみ等）
 if [ -n "$HEADER_SHOWN" ]; then

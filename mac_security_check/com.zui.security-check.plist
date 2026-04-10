@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Mac サプライチェーン攻撃チェッカー — 週次自動実行設定
+
+  セットアップ手順:
+  1. mac-supply-chain-check.sh を ~/bin/ に配置して実行権限を付与
+     mkdir -p ~/bin
+     cp mac-supply-chain-check.sh ~/bin/
+     chmod +x ~/bin/mac-supply-chain-check.sh
+
+  2. この plist を ~/Library/LaunchAgents/ に配置
+     cp com.zui.security-check.plist ~/Library/LaunchAgents/
+
+  3. ロード
+     launchctl load ~/Library/LaunchAgents/com.zui.security-check.plist
+
+  4. 手動テスト実行
+     launchctl start com.zui.security-check
+
+  停止する場合:
+     launchctl unload ~/Library/LaunchAgents/com.zui.security-check.plist
+-->
+<dict>
+    <key>Label</key>
+    <string>com.zui.security-check</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-l</string>
+        <string>__HOME__/bin/mac-supply-chain-check.sh</string>
+    </array>
+
+    <!-- 毎週月曜 9:00 に実行 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- ログ出力 -->
+    <key>StandardOutPath</key>
+    <string>__HOME__/security-reports/launchd-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/security-reports/launchd-stderr.log</string>
+
+</dict>
+</plist>

@@ -9,6 +9,68 @@ if [ "${ENABLE_FIREWALL:-true}" = "false" ]; then
     exit 0
 fi
 
+# --- DNS 解決ヘルパー（リトライ付き） ---
+# resolve_domain <domain> → stdout に IP を出力、失敗時は空
+DNS_RETRY_COUNT=3
+DNS_RETRY_DELAY=2
+
+resolve_a() {
+    local domain="$1"
+    local attempt
+    for attempt in $(seq 1 "$DNS_RETRY_COUNT"); do
+        local result
+        result=$(dig +noall +answer +tries=1 +time=5 A "$domain" 2>/dev/null | awk '$4 == "A" {print $5}')
+        if [ -n "$result" ]; then
+            echo "$result"
+            return 0
+        fi
+        if [ "$attempt" -lt "$DNS_RETRY_COUNT" ]; then
+            echo "  Retry ($attempt/$DNS_RETRY_COUNT) A record for $domain..." >&2
+            sleep "$DNS_RETRY_DELAY"
+        fi
+    done
+    return 1
+}
+
+resolve_aaaa() {
+    local domain="$1"
+    local attempt
+    for attempt in $(seq 1 "$DNS_RETRY_COUNT"); do
+        local result
+        result=$(dig +noall +answer +tries=1 +time=5 AAAA "$domain" 2>/dev/null | awk '$4 == "AAAA" {print $5}')
+        if [ -n "$result" ]; then
+            echo "$result"
+            return 0
+        fi
+        if [ "$attempt" -lt "$DNS_RETRY_COUNT" ]; then
+            echo "  Retry ($attempt/$DNS_RETRY_COUNT) AAAA record for $domain..." >&2
+            sleep "$DNS_RETRY_DELAY"
+        fi
+    done
+    return 1
+}
+
+# --- 重要ドメイン定義 ---
+# これらのドメインが解決できない場合、ファイアウォール初期化を中止する
+CRITICAL_DOMAINS=(
+    "api.anthropic.com"
+    "claude.ai"
+    "api.github.com"
+    "registry.npmjs.org"
+)
+
+# --- サマリー用カウンター ---
+SUMMARY_IPV4_COUNT=0
+SUMMARY_IPV6_COUNT=0
+SUMMARY_FAILED_DOMAINS=()
+
+# --- IPv6 利用可否チェック ---
+HAS_IPV6=true
+if ! ip -6 route show default >/dev/null 2>&1; then
+    echo "NOTE: IPv6 default route not found. IPv6 rules will be configured but may not be active."
+    HAS_IPV6=false
+fi
+
 # 1. Reset default policies to ACCEPT before flushing
 # (previous run may have set them to DROP)
 iptables -P INPUT ACCEPT
@@ -93,55 +155,82 @@ for cidr6 in \
 done
 
 # Resolve and add other allowed domains (A + AAAA records)
-for domain in \
-    "registry.npmjs.org" \
-    "cdn.npmjs.org" \
-    "registry.yarnpkg.com" \
-    "raw.githubusercontent.com" \
-    "codeload.githubusercontent.com" \
-    "objects.githubusercontent.com" \
-    "user-images.githubusercontent.com" \
-    "api.anthropic.com" \
-    "claude.ai" \
-    "context7.com" \
-    "mcp.context7.com" \
-    "api.context7.com" \
-    "repo1.maven.org" \
-    "plugins.gradle.org" \
-    "services.gradle.org" \
-    "pypi.org" \
-    "files.pythonhosted.org" \
-    "marketplace.visualstudio.com" \
-    "vscode.blob.core.windows.net" \
-    "update.code.visualstudio.com" \
-    "api.openai.com" \
-    "openaipublic.blob.core.windows.net" \
-    "cloud.langfuse.com" \
-    "us.cloud.langfuse.com"; do
-    echo "Resolving $domain..."
+ALL_DOMAINS=(
+    "registry.npmjs.org"
+    "cdn.npmjs.org"
+    "registry.yarnpkg.com"
+    "raw.githubusercontent.com"
+    "codeload.githubusercontent.com"
+    "objects.githubusercontent.com"
+    "user-images.githubusercontent.com"
+    "api.anthropic.com"
+    "claude.ai"
+    "api.github.com"
+    "context7.com"
+    "mcp.context7.com"
+    "api.context7.com"
+    "repo1.maven.org"
+    "plugins.gradle.org"
+    "services.gradle.org"
+    "pypi.org"
+    "files.pythonhosted.org"
+    "marketplace.visualstudio.com"
+    "vscode.blob.core.windows.net"
+    "update.code.visualstudio.com"
+    "api.openai.com"
+    "openaipublic.blob.core.windows.net"
+    "cloud.langfuse.com"
+    "us.cloud.langfuse.com"
+)
 
-    # IPv4 (A records)
-    ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}')
+is_critical_domain() {
+    local domain="$1"
+    for critical in "${CRITICAL_DOMAINS[@]}"; do
+        if [ "$domain" = "$critical" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+for domain in "${ALL_DOMAINS[@]}"; do
+    echo "Resolving $domain..."
+    domain_resolved=false
+
+    # IPv4 (A records) — リトライ付き
+    ips=$(resolve_a "$domain" || true)
     if [ -n "$ips" ]; then
         while read -r ip; do
             if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
                 echo "  Adding IPv4 $ip for $domain"
                 ipset add allowed-domains "$ip" -exist
+                SUMMARY_IPV4_COUNT=$((SUMMARY_IPV4_COUNT + 1))
+                domain_resolved=true
             fi
         done < <(echo "$ips")
     fi
 
-    # IPv6 (AAAA records)
-    ip6s=$(dig +noall +answer AAAA "$domain" | awk '$4 == "AAAA" {print $5}')
+    # IPv6 (AAAA records) — リトライ付き
+    ip6s=$(resolve_aaaa "$domain" || true)
     if [ -n "$ip6s" ]; then
         while read -r ip6; do
             echo "  Adding IPv6 $ip6 for $domain"
             ipset add allowed-domains-v6 "$ip6" -exist
+            SUMMARY_IPV6_COUNT=$((SUMMARY_IPV6_COUNT + 1))
+            domain_resolved=true
         done < <(echo "$ip6s")
     fi
 
-    if [ -z "$ips" ] && [ -z "$ip6s" ]; then
-        echo "  WARNING: Failed to resolve $domain (skipping)"
+    if [ "$domain_resolved" = false ]; then
+        if is_critical_domain "$domain"; then
+            echo "  ERROR: Failed to resolve critical domain: $domain"
+            echo "  This domain is required for Claude Code to function."
+            echo "  Check DNS connectivity and retry."
+            exit 1
+        else
+            echo "  WARNING: Failed to resolve $domain (skipping)"
+            SUMMARY_FAILED_DOMAINS+=("$domain")
+        fi
     fi
 done
 
@@ -205,7 +294,25 @@ ip6tables -A OUTPUT -m set --match-set allowed-domains-v6 dst -j ACCEPT
 iptables -A OUTPUT -j REJECT --reject-with icmp-admin-prohibited
 ip6tables -A OUTPUT -j REJECT --reject-with icmp6-adm-prohibited
 
-echo "Firewall configuration complete"
+# --- ファイアウォール初期化サマリー ---
+echo ""
+echo "=========================================="
+echo " Firewall initialization summary"
+echo "=========================================="
+echo "  IPv4 addresses added : $SUMMARY_IPV4_COUNT"
+echo "  IPv6 addresses added : $SUMMARY_IPV6_COUNT"
+echo "  IPv6 available       : $HAS_IPV6"
+if [ ${#SUMMARY_FAILED_DOMAINS[@]} -gt 0 ]; then
+    echo "  Unresolved (non-critical):"
+    for d in "${SUMMARY_FAILED_DOMAINS[@]}"; do
+        echo "    - $d"
+    done
+else
+    echo "  Unresolved domains   : none"
+fi
+echo "=========================================="
+echo ""
+
 echo "Verifying firewall rules..."
 if curl --connect-timeout 5 https://example.com >/dev/null 2>&1; then
     echo "ERROR: Firewall verification failed - was able to reach https://example.com"

@@ -56,6 +56,24 @@
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~)",
       "Bash(rm -rf ~/*)",
+      "Bash(unlink *)",
+      "Bash(shred *)",
+      "Bash(find * -delete)",
+      "Bash(find * -exec rm *)",
+      "Bash(find * -exec shred *)",
+      "Bash(* xargs rm *)",
+      "Bash(* xargs shred *)",
+      "Bash(* | xargs rm *)",
+      "Bash(* | xargs shred *)",
+      "Bash(perl * unlink *)",
+      "Bash(python -c *os.remove*)",
+      "Bash(python -c *os.unlink*)",
+      "Bash(python3 -c *os.remove*)",
+      "Bash(python3 -c *os.unlink*)",
+      "Bash(mv * /dev/null)",
+      "Bash(* sed -i * settings.json*)",
+      "Bash(* sed -i * .claude.json*)",
+      "Bash(* sed -i * .mcp.json*)",
       "Bash(curl *)",
       "Bash(wget *)",
       "Bash(ssh *)",
@@ -74,11 +92,11 @@
       "Bash(python3 -c *import*socket*)",
       "Read(.env)",
       "Read(.env.*)",
-      "Read(//home/node/.ssh/**)",
-      "Read(//home/node/.aws/**)",
-      "Read(//home/node/.gnupg/**)",
-      "Read(//etc/shadow)",
-      "Read(//etc/gshadow)",
+      "Read(/home/node/.ssh/**)",
+      "Read(/home/node/.aws/**)",
+      "Read(/home/node/.gnupg/**)",
+      "Read(/etc/shadow)",
+      "Read(/etc/gshadow)",
       "Read(./secrets/**)",
       "WebFetch"
     ],
@@ -89,7 +107,8 @@
     "enabled": true,
     "autoAllowBashIfSandboxed": true,
     "excludedCommands": [
-      "docker *"
+      "docker *",
+      "gh *"
     ],
     "filesystem": {
       "allowWrite": [
@@ -173,6 +192,27 @@
           {
             "type": "command",
             "command": "bash /workspace/.claude/hooks/lint-on-save.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash /workspace/.claude/hooks/dockerfile-cooldown-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash /workspace/.claude/hooks/gha-security-check.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /workspace/.claude/hooks/dockerfile-cooldown-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash /workspace/.claude/hooks/gha-security-check.sh"
           }
         ]
       },

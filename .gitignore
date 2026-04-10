@@ -1,8 +1,16 @@
+# === 機密情報 ===
 .env
+.env.local
+
+# === ローカル設定（git管理外） ===
 .claude/
 .DS_Store
 
-# workspace全体を除外
+# === ログ・キャッシュ ===
+*.log
+
+# === workspace 管理 ===
+# workspace全体を除外し、必要なファイルのみ追跡
 workspace/*
 
 # workspace/.mcp.json を追跡
@@ -15,10 +23,25 @@ workspace/.claude/*
 !workspace/.claude/hooks/
 !workspace/.claude/tests/
 
+# workspace/.claude/ のランタイム状態は除外
+workspace/.claude/state/
+
 # workspace直下のサプライチェーン対策設定ファイルを追跡
 !workspace/.npmrc
 !workspace/.pip.conf
 !workspace/.mvn-settings.xml
+!workspace/uv.toml
 
 # workspace/CLAUDE.md を追跡
 !workspace/CLAUDE.md
+
+# workspace のキャッシュ・一時ファイルは除外
+workspace/.playwright-mcp/
+workspace/.uv-cache/
+
+# === ホスト側ツール（追跡対象） ===
+# cooldown_management/ を追跡
+!cooldown_management/
+
+# mac_security_check/ を追跡（ホスト Mac セキュリティツール群）
+!mac_security_check/

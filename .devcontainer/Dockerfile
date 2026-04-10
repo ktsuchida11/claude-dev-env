@@ -1,4 +1,4 @@
-FROM node:20
+FROM node:22
 
 ARG TZ
 ENV TZ="$TZ"
@@ -103,6 +103,12 @@ RUN install -m 0755 -d /etc/apt/keyrings \
   && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Supply chain: ビルド時の npm にもクールダウンを適用
+# workspace/.npmrc はビルド時にマウントされないため、グローバル設定で適用
+RUN npm config set -g ignore-scripts true && \
+  npm config set -g save-exact true && \
+  npm config set -g min-release-age 7
+
 # Ensure default node user has access to /usr/local/share
 RUN mkdir -p /usr/local/share/npm-global && \
   chown -R node:node /usr/local/share
@@ -129,8 +135,23 @@ RUN ARCH=$(dpkg --print-architecture) && \
   sudo dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
   rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
+# Supply chain: クールダウン対応の最小バージョン
+# - npm >= 11.10.0 (min-release-age) → node:22 には npm 10.x が同梱のためアップグレード
+# - pip >= 26.0    (uploaded-prior-to)
+# - uv  >= 0.6.0   (exclude-newer)
+RUN npm_ver=$(npm --version) && \
+  echo "Current npm: v${npm_ver}" && \
+  npm install -g "npm@>=11.10.0" && \
+  echo "Updated npm: v$(npm --version)"
+
 # Install uv (provides uvx for running Serena MCP server), langfuse (tracing hook), pip-audit (supply chain audit)
-RUN pip3 install --break-system-packages uv langfuse pip-audit
+# pip 自体もクールダウン対応バージョン（>= 26.0）にアップグレード
+# ビルド時の pip install にも --uploaded-prior-to を付与
+# ※ pip/uv 自体のインストールにはクールダウンを適用しない（ブートストラップ）
+RUN pip3 install --break-system-packages --upgrade pip && \
+  pip3 install --break-system-packages uv && \
+  COOLDOWN_DATE=$(date -u -d '7 days ago' +%Y-%m-%d 2>/dev/null || date -u -v-7d +%Y-%m-%d) && \
+  pip3 install --break-system-packages --uploaded-prior-to="$COOLDOWN_DATE" langfuse pip-audit
 
 # Set up non-root user
 USER node
@@ -141,6 +162,9 @@ RUN mkdir -p /home/node/.m2 && \
 # Supply chain: pip config symlink (pip/uv auto-reads this path)
 RUN mkdir -p /home/node/.config/pip && \
   ln -s /workspace/.pip.conf /home/node/.config/pip/pip.conf
+# Supply chain: uv config symlink (uv auto-reads this path)
+RUN mkdir -p /home/node/.config/uv && \
+  ln -s /workspace/uv.toml /home/node/.config/uv/uv.toml
 
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=$PATH:/usr/local/share/npm-global/bin:/home/node/.local/bin:/home/node/.claude/local/bin
@@ -165,13 +189,14 @@ COPY --chmod=755 install-claude.sh /usr/local/bin/install-claude.sh
 RUN cd /tmp && /usr/local/bin/install-claude.sh
 
 # Pre-install MCP server npm packages
-RUN npm install -g @upstash/context7-mcp @playwright/mcp @modelcontextprotocol/server-sequential-thinking
+# min-release-age はグローバル設定済み、ignore-scripts も明示的に付与
+RUN npm install -g --ignore-scripts @upstash/context7-mcp @playwright/mcp @modelcontextprotocol/server-sequential-thinking
 
 # Install Playwright Chromium browser
 RUN npx playwright install chromium
 
 # Install language servers for Serena
-RUN npm install -g typescript-language-server typescript pyright
+RUN npm install -g --ignore-scripts typescript-language-server typescript pyright
 
 # Copy firewall script, MCP config template, and setup script
 COPY init-firewall.sh /usr/local/bin/

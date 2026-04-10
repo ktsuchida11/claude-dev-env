@@ -5,7 +5,7 @@
 # block-dangerous.sh と supply-chain-guard.sh を直接呼び出し、
 # 各パターンが正しくブロック/許可されるか検証する。
 #
-# 使い方: bash /workspace/.claude/tests/hook-test.sh
+# 使い方: bash <this-dir>/hook-test.sh
 # =============================================================================
 
 set -uo pipefail
@@ -69,8 +69,9 @@ test_hook() {
   fi
 }
 
-BLOCK_HOOK="/workspace/.claude/hooks/block-dangerous.sh"
-GUARD_HOOK="/workspace/.claude/hooks/supply-chain-guard.sh"
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+BLOCK_HOOK="${BASE_DIR}/hooks/block-dangerous.sh"
+GUARD_HOOK="${BASE_DIR}/hooks/supply-chain-guard.sh"
 
 # =============================================================================
 # 1. block-dangerous.sh テスト
@@ -147,6 +148,27 @@ test_hook "$BLOCK_HOOK" "echo 'hacked' >> .claude.json" 2 \
 
 test_hook "$BLOCK_HOOK" "tee /workspace/.mcp.json <<< '{\"hacked\": true}'" 2 \
   ".mcp.json への tee 書き込み"
+
+test_hook "$BLOCK_HOOK" "find / -name '*.log' -delete" 2 \
+  "find -delete（/ 配下）"
+
+test_hook "$BLOCK_HOOK" "find /home -name '*.tmp' -exec rm {} ;" 2 \
+  "find -exec rm（/home 配下）"
+
+test_hook "$BLOCK_HOOK" "ls | xargs rm" 2 \
+  "xargs rm"
+
+test_hook "$BLOCK_HOOK" "sed -i '' 's/enabled/false/' settings.json" 2 \
+  "sed -i settings.json 変更"
+
+test_hook "$BLOCK_HOOK" "jq '.sandbox.enabled = false' settings.json > settings.json" 2 \
+  "jq settings.json 変更"
+
+test_hook "$BLOCK_HOOK" "echo '{\"sandbox\": {\"enabled\": false}}'" 2 \
+  "sandbox enabled false パターン"
+
+test_hook "$BLOCK_HOOK" "echo dangerouslyDisableSandbox" 2 \
+  "dangerouslyDisableSandbox パターン"
 
 echo ""
 echo -e "  ${YELLOW}--- 許可されるべきコマンド ---${NC}"
@@ -252,11 +274,193 @@ test_hook "$GUARD_HOOK" "npm install expresss" 0 \
 export ENABLE_SUPPLY_CHAIN_GUARD=true
 
 # =============================================================================
-# 3. supply-chain-audit.sh テスト
+# 3. gha-security-check.sh テスト
 # =============================================================================
-section "3" "supply-chain-audit.sh — Post-Install 監査"
+section "3" "gha-security-check.sh — GitHub Actions セキュリティチェック"
 
-AUDIT_HOOK="/workspace/.claude/hooks/supply-chain-audit.sh"
+GHA_HOOK="${BASE_DIR}/hooks/gha-security-check.sh"
+GHA_TEST_DIR="${TMPDIR:-/tmp}/gha-hook-test-$$"
+mkdir -p "$GHA_TEST_DIR"
+GHA_TEST_FILE="${GHA_TEST_DIR}/project/.github/workflows/test.yml"
+mkdir -p "$(dirname "$GHA_TEST_FILE")"
+
+# PostToolUse Hook 用ヘルパー（file_path を渡す）
+test_gha_hook() {
+  local test_file="$1"
+  local content="$2"
+  local expected_output="$3"
+  local description="$4"
+
+  # テストファイルを作成
+  echo "$content" > "$test_file"
+
+  local input
+  input=$(jq -n --arg path "$test_file" '{"tool_input": {"file_path": $path}}')
+
+  local output
+  output=$(echo "$input" | bash "$GHA_HOOK" 2>&1) || true
+
+  if echo "$output" | grep -qE "$expected_output"; then
+    pass "$description"
+  else
+    fail "$description (expected pattern: $expected_output)"
+  fi
+}
+
+echo -e "  ${YELLOW}--- CRITICAL 検出テスト ---${NC}"
+
+# スクリプトインジェクション検出
+test_gha_hook "$GHA_TEST_FILE" \
+'name: test
+on: issues
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.event.issue.title }}"' \
+  "CRITICAL.*スクリプトインジェクション" \
+  "スクリプトインジェクション検出: github.event.issue.title"
+
+# pull_request_target + checkout HEAD
+test_gha_hook "$GHA_TEST_FILE" \
+'name: test
+on: pull_request_target
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}' \
+  "CRITICAL.*pull_request_target" \
+  "pull_request_target + PR HEAD checkout 検出"
+
+# シークレット漏洩
+test_gha_hook "$GHA_TEST_FILE" \
+'name: test
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ${{ secrets.API_KEY }}' \
+  "CRITICAL.*シークレット.*標準出力" \
+  "シークレット漏洩検出: echo secrets.*"
+
+# permissions: write-all
+test_gha_hook "$GHA_TEST_FILE" \
+'name: test
+on: push
+permissions: write-all
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hello' \
+  "CRITICAL.*write-all" \
+  "過剰な権限検出: permissions: write-all"
+
+echo ""
+echo -e "  ${YELLOW}--- WARN 検出テスト ---${NC}"
+
+# サードパーティアクション未固定
+test_gha_hook "$GHA_TEST_FILE" \
+'name: test
+on: push
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: some-org/some-action@v1' \
+  "WARN.*サードパーティアクション未固定" \
+  "サードパーティアクション SHA 未固定検出"
+
+# permissions 未設定
+test_gha_hook "$GHA_TEST_FILE" \
+'name: test
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hello' \
+  "WARN.*permissions.*未設定" \
+  "permissions 未設定検出"
+
+# セルフホストランナー
+test_gha_hook "$GHA_TEST_FILE" \
+'name: test
+on: push
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: self-hosted
+    steps:
+      - run: echo hello' \
+  "WARN.*セルフホストランナー" \
+  "セルフホストランナー検出"
+
+echo ""
+echo -e "  ${YELLOW}--- INFO 検出テスト ---${NC}"
+
+# persist-credentials 未設定
+test_gha_hook "$GHA_TEST_FILE" \
+'name: test
+on: push
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11' \
+  "INFO.*persist-credentials.*false.*未設定" \
+  "persist-credentials: false 未設定検出"
+
+# timeout-minutes 未設定
+test_gha_hook "$GHA_TEST_FILE" \
+'name: test
+on: push
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hello' \
+  "INFO.*timeout-minutes.*未設定" \
+  "timeout-minutes 未設定検出"
+
+echo ""
+echo -e "  ${YELLOW}--- 非対象ファイルのスルーテスト ---${NC}"
+
+# GitHub Actions 以外のファイルはスルー
+NON_GHA_FILE="${GHA_TEST_DIR}/project/src/app.yml"
+mkdir -p "$(dirname "$NON_GHA_FILE")" 2>/dev/null
+echo 'test: true' > "$NON_GHA_FILE"
+
+input_non_gha=$(jq -n --arg path "$NON_GHA_FILE" '{"tool_input": {"file_path": $path}}')
+exit_code=0
+output_non_gha=$(echo "$input_non_gha" | bash "$GHA_HOOK" 2>&1) || exit_code=$?
+
+if [ "$exit_code" -eq 0 ] && [ -z "$output_non_gha" ]; then
+  pass "非 GitHub Actions ファイルはスルー"
+else
+  fail "非 GitHub Actions ファイルがチェックされた"
+fi
+
+# テスト用一時ディレクトリの後片付け
+rm -rf "$GHA_TEST_DIR"
+
+# =============================================================================
+# 4. supply-chain-audit.sh テスト
+# =============================================================================
+section "4" "supply-chain-audit.sh — Post-Install 監査"
+
+AUDIT_HOOK="${BASE_DIR}/hooks/supply-chain-audit.sh"
 
 # audit は常に exit 0（情報提供のみ、ブロックしない）
 test_hook "$AUDIT_HOOK" "npm install express" 0 \

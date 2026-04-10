@@ -1,0 +1,15 @@
+# Supply Chain Security: uv configuration
+# See: https://docs.astral.sh/uv/reference/settings/#exclude-newer
+
+# クールダウン: 指定日時より前に公開されたバージョンのみインストール可能
+# RFC 3339 形式の絶対日時（pip と同様に定期更新が必要）
+# cooldown-update.sh で自動更新可能
+#
+# 緊急バイパス:
+#   uv add <pkg> --exclude-newer "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+exclude-newer = "2026-04-02T00:00:00Z"
+
+[pip]
+# レジストリを公式 PyPI のみに固定（dependency confusion 対策）
+index-url = "https://pypi.org/simple/"
+extra-index-url = []

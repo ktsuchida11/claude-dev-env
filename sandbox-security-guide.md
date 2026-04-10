@@ -1,8 +1,41 @@
 # Claude Code セキュア環境 — 設計ポイント
 
-> 作成日: 2026/04/03
+> 作成日: 2026/04/03 / 更新: 2026/04/10
 > 対象リポジトリ: https://github.com/ktsuchida11/claude-dev-env
 > 用途: 勉強会の補足資料 / リポジトリのdocsに配置
+
+---
+
+## 0. 全体像 — ホストとコンテナの二段構え
+
+本環境のセキュリティ対策は **ホスト Mac** と **DevContainer** の 2 つのレイヤーで構成される。
+
+```
+ホスト Mac（mac_security_check/）
+┌─────────────────────────────────────────────────┐
+│  ・Claude Code グローバル deny ルール              │
+│  ・パッケージマネージャ クールダウン設定             │
+│  ・IOC データベース + 週次サプライチェーンチェック    │
+│  ・macOS TCC 権限監査、VS Code 拡張監査            │
+│  ・Git hooks 検査、SSH 鍵監査                     │
+│  ~/.ssh, ~/.aws, 他のリポジトリ → 触れない          │
+└────────────────┬────────────────────────────────┘
+                 │ Docker
+DevContainer（workspace/.claude/）
+┌────────────────┴────────────────────────────────┐
+│  L7: コンテナ隔離（非 root ユーザー node）          │
+│  L6: --dangerously-skip-permissions 無効化        │
+│  L5: Sandbox + Permission deny リスト              │
+│  L4: Post-install 監査（npm audit / pip-audit）    │
+│  L3: パッケージマネージャ設定（.npmrc, .pip.conf 等）│
+│  L2: Pre-install ガード（typosquatting 検知等）     │
+│  L1: 危険コマンドブロック（block-dangerous.sh）      │
+│  L0: ファイアウォール（iptables + ipset）            │
+└─────────────────────────────────────────────────┘
+```
+
+ホスト側のセットアップは `mac_security_check/setup.sh` で一括実行できる。
+詳細は [`mac_security_check/COMPLETE-SETUP-GUIDE.md`](mac_security_check/COMPLETE-SETUP-GUIDE.md) を参照。
 
 ---
 

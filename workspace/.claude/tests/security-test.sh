@@ -3,7 +3,7 @@
 # security-test.sh — DevContainer セキュリティ自動テスト
 #
 # コンテナ内で実行して、各セキュリティ対策が正しく機能しているか検証する。
-# 使い方: bash /workspace/.claude/tests/security-test.sh
+# 使い方: bash <this-dir>/security-test.sh
 #
 # テストカテゴリ:
 #   1. ファイアウォール（ネットワーク制限）
@@ -22,7 +22,16 @@ FAIL=0
 SKIP=0
 ERRORS=()
 
-SETTINGS="/workspace/.claude/settings.json"
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+SETTINGS="${BASE_DIR}/settings.json"
+WORKSPACE="${PROJECT_DIR}/workspace"
+
+# DevContainer 内かローカルかを判定
+IS_DEVCONTAINER="false"
+if [ -f "/.dockerenv" ] || grep -q 'docker\|containerd' /proc/1/cgroup 2>/dev/null; then
+  IS_DEVCONTAINER="true"
+fi
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -57,6 +66,14 @@ section() {
 # 1. ファイアウォール
 # =============================================================================
 section "1" "ファイアウォール（ネットワーク制限）"
+
+if [ "$IS_DEVCONTAINER" = "false" ]; then
+  skip "iptables: ローカル環境ではスキップ（DevContainer 専用）"
+  skip "ipset: ローカル環境ではスキップ（DevContainer 専用）"
+  skip "外部通信ブロック: ローカル環境ではスキップ（DevContainer 専用）"
+  skip "許可通信テスト: ローカル環境ではスキップ（DevContainer 専用）"
+  skip "DNS 解決テスト: ローカル環境ではスキップ（DevContainer 専用）"
+else
 
 # ファイアウォールが有効か確認
 if sudo iptables -L OUTPUT -n 2>/dev/null | grep -q "DROP"; then
@@ -152,13 +169,15 @@ except Exception as e:
   fi
 fi
 
+fi # IS_DEVCONTAINER
+
 # =============================================================================
 # 2. ファイルシステム制限
 # =============================================================================
 section "2" "ファイルシステム制限"
 
 # /workspace への書き込み（許可されるべき）
-TESTFILE="/workspace/.claude/tests/.test_write_$$"
+TESTFILE="${BASE_DIR}/tests/.test_write_$$"
 if touch "$TESTFILE" 2>/dev/null; then
   rm -f "$TESTFILE"
   pass "/workspace への書き込み: 許可"
@@ -231,20 +250,20 @@ fi
 section "4" "パッケージマネージャ設定（サプライチェーン Layer 1）"
 
 # .npmrc の確認
-if [ -f /workspace/.npmrc ]; then
-  if grep -q "ignore-scripts=true" /workspace/.npmrc; then
+if [ -f "$WORKSPACE/.npmrc" ]; then
+  if grep -q "ignore-scripts=true" "$WORKSPACE/.npmrc"; then
     pass ".npmrc: ignore-scripts=true"
   else
     fail ".npmrc: ignore-scripts が設定されていない"
   fi
 
-  if grep -q "registry=https://registry.npmjs.org/" /workspace/.npmrc; then
+  if grep -q "registry=https://registry.npmjs.org/" "$WORKSPACE/.npmrc"; then
     pass ".npmrc: レジストリが公式のみに固定"
   else
     fail ".npmrc: レジストリ固定が未設定"
   fi
 
-  if grep -q "audit=true" /workspace/.npmrc; then
+  if grep -q "audit=true" "$WORKSPACE/.npmrc"; then
     pass ".npmrc: audit=true"
   else
     fail ".npmrc: audit が有効でない"
@@ -254,14 +273,14 @@ else
 fi
 
 # .pip.conf の確認
-if [ -f /workspace/.pip.conf ]; then
-  if grep -q "index-url = https://pypi.org/simple/" /workspace/.pip.conf; then
+if [ -f "$WORKSPACE/.pip.conf" ]; then
+  if grep -q "index-url = https://pypi.org/simple/" "$WORKSPACE/.pip.conf"; then
     pass ".pip.conf: PyPI のみに固定"
   else
     fail ".pip.conf: index-url が正しくない"
   fi
 
-  if grep -q "no-extra-index-url = true" /workspace/.pip.conf; then
+  if grep -q "no-extra-index-url = true" "$WORKSPACE/.pip.conf"; then
     pass ".pip.conf: 追加レジストリ無効"
   else
     fail ".pip.conf: no-extra-index-url が設定されていない"
@@ -271,14 +290,14 @@ else
 fi
 
 # .mvn-settings.xml の確認
-if [ -f /workspace/.mvn-settings.xml ]; then
-  if grep -q '<mirrorOf>\*</mirrorOf>' /workspace/.mvn-settings.xml; then
+if [ -f "$WORKSPACE/.mvn-settings.xml" ]; then
+  if grep -q '<mirrorOf>\*</mirrorOf>' "$WORKSPACE/.mvn-settings.xml"; then
     pass ".mvn-settings.xml: 全リポジトリをミラー"
   else
     fail ".mvn-settings.xml: mirrorOf が * でない"
   fi
 
-  if grep -q 'repo1.maven.org/maven2' /workspace/.mvn-settings.xml; then
+  if grep -q 'repo1.maven.org/maven2' "$WORKSPACE/.mvn-settings.xml"; then
     pass ".mvn-settings.xml: Maven Central のみ"
   else
     fail ".mvn-settings.xml: Maven Central 以外のリポジトリ"
@@ -297,34 +316,39 @@ if command -v npm &>/dev/null; then
   fi
 fi
 
-# シンリンクの確認
-if [ -L "$HOME/.m2/settings.xml" ]; then
-  LINK_TARGET=$(readlink "$HOME/.m2/settings.xml")
-  if [ "$LINK_TARGET" = "/workspace/.mvn-settings.xml" ]; then
-    pass "Maven symlink: ~/.m2/settings.xml → /workspace/.mvn-settings.xml"
-  else
-    fail "Maven symlink: 意図しないリンク先 ($LINK_TARGET)"
-  fi
+# シンリンクの確認（DevContainer 専用）
+if [ "$IS_DEVCONTAINER" = "false" ]; then
+  skip "Maven symlink: ローカル環境ではスキップ（DevContainer 専用）"
+  skip "pip symlink: ローカル環境ではスキップ（DevContainer 専用、PIP_CONFIG_FILE 環境変数で代替）"
 else
-  if [ -f "$HOME/.m2/settings.xml" ]; then
-    skip "Maven: ~/.m2/settings.xml がファイルとして存在（シンリンクでない）"
+  if [ -L "$HOME/.m2/settings.xml" ]; then
+    LINK_TARGET=$(readlink "$HOME/.m2/settings.xml")
+    if [ "$LINK_TARGET" = "$WORKSPACE/.mvn-settings.xml" ]; then
+      pass "Maven symlink: ~/.m2/settings.xml → /workspace/.mvn-settings.xml"
+    else
+      fail "Maven symlink: 意図しないリンク先 ($LINK_TARGET)"
+    fi
   else
-    fail "Maven: ~/.m2/settings.xml が存在しない"
+    if [ -f "$HOME/.m2/settings.xml" ]; then
+      skip "Maven: ~/.m2/settings.xml がファイルとして存在（シンリンクでない）"
+    else
+      fail "Maven: ~/.m2/settings.xml が存在しない"
+    fi
   fi
-fi
 
-if [ -L "$HOME/.config/pip/pip.conf" ]; then
-  LINK_TARGET=$(readlink "$HOME/.config/pip/pip.conf")
-  if [ "$LINK_TARGET" = "/workspace/.pip.conf" ]; then
-    pass "pip symlink: ~/.config/pip/pip.conf → /workspace/.pip.conf"
+  if [ -L "$HOME/.config/pip/pip.conf" ]; then
+    LINK_TARGET=$(readlink "$HOME/.config/pip/pip.conf")
+    if [ "$LINK_TARGET" = "$WORKSPACE/.pip.conf" ]; then
+      pass "pip symlink: ~/.config/pip/pip.conf → /workspace/.pip.conf"
+    else
+      fail "pip symlink: 意図しないリンク先 ($LINK_TARGET)"
+    fi
   else
-    fail "pip symlink: 意図しないリンク先 ($LINK_TARGET)"
-  fi
-else
-  if [ -f "$HOME/.config/pip/pip.conf" ]; then
-    skip "pip: ~/.config/pip/pip.conf がファイルとして存在（シンリンクでない）"
-  else
-    fail "pip: ~/.config/pip/pip.conf が存在しない"
+    if [ -f "$HOME/.config/pip/pip.conf" ]; then
+      skip "pip: ~/.config/pip/pip.conf がファイルとして存在（シンリンクでない）"
+    else
+      fail "pip: ~/.config/pip/pip.conf が存在しない"
+    fi
   fi
 fi
 
@@ -405,10 +429,10 @@ fi
 
 # Hook スクリプトの存在確認
 for hook in "block-dangerous.sh" "supply-chain-guard.sh" "supply-chain-audit.sh" "lint-on-save.sh" "langfuse_hook.py"; do
-  if [ -f "/workspace/.claude/hooks/$hook" ]; then
+  if [ -f "${BASE_DIR}/hooks/$hook" ]; then
     pass "Hook ファイル: $hook 存在"
   else
-    fail "Hook ファイル: $hook が見つからない"
+    fail "Hook ファイル: $hook が見つからない (${BASE_DIR}/hooks/$hook)"
   fi
 done
 

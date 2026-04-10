@@ -37,6 +37,12 @@ services:
     security_opt:
       - seccomp=unconfined
       - systempaths=unconfined
+    healthcheck:
+      test: ["CMD", "command", "-v", "claude"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       litellm:
         condition: service_healthy
@@ -72,6 +78,7 @@ services:
       # - no_proxy=${NO_PROXY:-}
     volumes:
       - ./workspace:/workspace:delegated
+      - ./cooldown_management:/workspace/cooldown_management:ro
       - claude-config:/home/node/.claude
       - bash-history:/commandhistory
       - /var/run/docker.sock:/var/run/docker.sock

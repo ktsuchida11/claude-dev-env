@@ -44,5 +44,5 @@
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
   },
-  "postStartCommand": "sudo chmod 666 /var/run/docker.sock || true && /usr/local/bin/setup-mcp.sh && (sudo /usr/local/bin/init-firewall.sh || echo 'Firewall init skipped (requires NET_ADMIN capability)')"
+  "postStartCommand": "sudo chmod 666 /var/run/docker.sock || true && /usr/local/bin/setup-mcp.sh && (sudo /usr/local/bin/init-firewall.sh || echo 'Firewall init skipped (requires NET_ADMIN capability)') && (bash /workspace/cooldown_management/cooldown-update.sh 7 || echo 'Cooldown update skipped')"
 }
