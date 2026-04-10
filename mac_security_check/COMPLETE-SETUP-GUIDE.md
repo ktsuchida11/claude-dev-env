@@ -1,5 +1,12 @@
 # Mac サプライチェーン攻撃チェッカー — 完全セットアップガイド
 
+> **関連ドキュメント**:
+> - [QUICKSTART.md](../QUICKSTART.md) — DevContainer 環境のクイックスタート
+> - [SECURITY-GUIDE.md](../SECURITY-GUIDE.md) — DevContainer 内の 4 層セキュリティ設計
+> - [README.md](../README.md) — 環境の全体説明
+>
+> 統合セットアップ: `bash mac_security_check/setup.sh` で本ガイドの手順を一括実行できます。
+
 ## 1. このシステムの全体像
 
 ```

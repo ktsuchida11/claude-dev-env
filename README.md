@@ -176,7 +176,7 @@ claude-dev-env/
 ├── docker-compose-without-litellm.yml # Claude OAuth のみ構成
 ├── docker-compose.langfuse.yml        # LangFuse 接続オーバーライド
 ├── QUICKSTART.md                      # クイックスタートガイド
-├── sandbox-security-guide.md          # セキュリティアーキテクチャ解説
+├── SECURITY-GUIDE.md          # セキュリティアーキテクチャ解説
 ├── .env.example                       # 環境変数テンプレート
 └── .gitignore
 ```
@@ -715,7 +715,7 @@ cat /workspace/.claude/tests/SECURITY-CHECKLIST.md
 
 | ドキュメント | 内容 |
 | --- | --- |
-| [sandbox-security-guide.md](sandbox-security-guide.md) | セキュリティ設計ポイント（4層防御の設計思想・脅威モデル・Prompt Injection 対策） |
+| [SECURITY-GUIDE.md](SECURITY-GUIDE.md) | セキュリティ設計ポイント（4層防御の設計思想・脅威モデル・Prompt Injection 対策） |
 | [SECURITY-CHECKLIST.md](workspace/.claude/tests/SECURITY-CHECKLIST.md) | テストチェックリスト（8層防御カバレッジ一覧・自動/手動テスト手順） |
 
 ### テスト実行タイミング

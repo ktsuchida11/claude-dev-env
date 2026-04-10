@@ -225,6 +225,6 @@ gh pr create --title "feat: 新機能" --body "変更内容"
 | ドキュメント | 内容 |
 |-------------|------|
 | [README.md](README.md) | 環境の詳細な設計と構成 |
-| [sandbox-security-guide.md](sandbox-security-guide.md) | 4 層セキュリティアーキテクチャ解説 |
+| [SECURITY-GUIDE.md](SECURITY-GUIDE.md) | 4 層セキュリティアーキテクチャ解説 |
 | [workspace/CLAUDE.md](workspace/CLAUDE.md) | DevContainer 内での Claude Code 利用ガイド |
 | [mac_security_check/COMPLETE-SETUP-GUIDE.md](mac_security_check/COMPLETE-SETUP-GUIDE.md) | ホスト Mac のセキュリティチェック詳細 |
