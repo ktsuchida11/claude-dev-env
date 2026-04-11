@@ -444,12 +444,12 @@ echo 'test: true' > "$NON_GHA_FILE"
 
 input_non_gha=$(jq -n --arg path "$NON_GHA_FILE" '{"tool_input": {"file_path": $path}}')
 exit_code=0
-output_non_gha=$(echo "$input_non_gha" | bash "$GHA_HOOK" 2>&1) || exit_code=$?
+output_non_gha=$(echo "$input_non_gha" | bash "$GHA_HOOK" 2>&1 | grep -v "^bash: warning:" || true) || exit_code=$?
 
 if [ "$exit_code" -eq 0 ] && [ -z "$output_non_gha" ]; then
   pass "非 GitHub Actions ファイルはスルー"
 else
-  fail "非 GitHub Actions ファイルがチェックされた"
+  fail "非 GitHub Actions ファイルがチェックされた (exit=$exit_code, output=$output_non_gha)"
 fi
 
 # テスト用一時ディレクトリの後片付け

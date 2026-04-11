@@ -19,7 +19,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-REPORT_FILE="${OUTPUT_DIR}/claude-code-security-report_${TIMESTAMP}.md"
+REPORT_FILE="${OUTPUT_DIR}/security-reports/claude-code-security-report_${TIMESTAMP}.md"
 
 # Settings file locations (macOS)
 USER_SETTINGS="$HOME/.claude/settings.json"
@@ -111,6 +111,13 @@ echo "|------|-------------|" >> "$REPORT_FILE"
 echo ""
 echo "=== 1. サンドボックス設定 ==="
 
+# ホスト環境の判定
+# このスクリプトは macOS ホスト専用。DevContainer 内での監査は security-test.sh を使用。
+IS_HOST="true"
+if [ -f "/.dockerenv" ] || grep -q 'docker\|containerd' /proc/1/cgroup 2>/dev/null; then
+    IS_HOST="false"
+fi
+
 # Check if sandbox is configured in any settings file
 SANDBOX_FOUND=false
 for f in "$USER_SETTINGS" "$USER_SETTINGS_LOCAL" "$MANAGED_SETTINGS"; do
@@ -118,28 +125,40 @@ for f in "$USER_SETTINGS" "$USER_SETTINGS_LOCAL" "$MANAGED_SETTINGS"; do
         HAS_SANDBOX=$(jq 'has("sandbox")' "$f" 2>/dev/null || echo "false")
         if [ "$HAS_SANDBOX" = "true" ]; then
             SANDBOX_FOUND=true
-            
+
             # Check sandbox mode
             SANDBOX_MODE=$(check_json_field "$f" '.sandbox.mode')
             if [ "$SANDBOX_MODE" != "null" ] && [ "$SANDBOX_MODE" != "file_not_found" ]; then
-                log_pass "サンドボックスモード設定あり: ${SANDBOX_MODE} (in $(basename $f))"
+                log_pass "サンドボックスモード設定あり: ${SANDBOX_MODE} ($(basename "$f"))"
             fi
-            
+
             # Check allowedDomains (network isolation)
-            ALLOWED_DOMAINS=$(jq '.sandbox.allowedDomains // [] | length' "$f" 2>/dev/null || echo "0")
+            # sandbox.network.allowedDomains (nested) と sandbox.allowedDomains (flat) の両方をチェック
+            ALLOWED_DOMAINS=$(jq '(.sandbox.network.allowedDomains // .sandbox.allowedDomains // []) | length' "$f" 2>/dev/null || echo "0")
             if [ "$ALLOWED_DOMAINS" -gt 0 ]; then
-                log_pass "ネットワーク分離: allowedDomains に ${ALLOWED_DOMAINS} ドメイン設定"
+                log_pass "ネットワーク分離: allowedDomains に ${ALLOWED_DOMAINS} ドメイン設定 ($(basename "$f"))"
             else
-                log_warn "ネットワーク分離: allowedDomains 未設定（全ドメインアクセス可能）"
+                if [ "$IS_HOST" = "true" ]; then
+                    log_fail "[ホスト] ネットワーク分離: allowedDomains 未設定（ホスト上で Claude Code を直接使う場合に全ドメインアクセス可能）"
+                else
+                    log_warn "ネットワーク分離: allowedDomains 未設定（全ドメインアクセス可能）"
+                fi
             fi
-            
+
             # Check allowWrite restrictions
-            ALLOW_WRITE=$(jq '.sandbox.allowWrite // [] | length' "$f" 2>/dev/null || echo "0")
+            # sandbox.filesystem.allowWrite (nested) と sandbox.allowWrite (flat) の両方をチェック
+            ALLOW_WRITE=$(jq '(.sandbox.filesystem.allowWrite // .sandbox.allowWrite // []) | length' "$f" 2>/dev/null || echo "0")
             if [ "$ALLOW_WRITE" -gt 0 ]; then
-                log_pass "ファイルシステム分離: allowWrite に ${ALLOW_WRITE} パス制限"
+                log_pass "ファイルシステム分離: allowWrite に ${ALLOW_WRITE} パス制限 ($(basename "$f"))"
             else
-                log_warn "ファイルシステム分離: allowWrite 未設定"
+                if [ "$IS_HOST" = "true" ]; then
+                    log_fail "[ホスト] ファイルシステム分離: allowWrite 未設定（書き込み先が制限されていない）"
+                else
+                    log_warn "ファイルシステム分離: allowWrite 未設定"
+                fi
             fi
+        else
+            log_warn "サンドボックスなし ($(basename "$f"))"
         fi
     fi
 done
@@ -196,6 +215,8 @@ for i in "${!SENSITIVE_PATTERNS[@]}"; do
             FOUND=true
             log_pass "${LABEL} の読み取りが deny に設定 ($(basename $f))"
             break
+        else
+            log_warn "${LABEL} が deny リストに未設定 in $(basename $f)"
         fi
     done
     
@@ -325,23 +346,36 @@ echo "|------|-------------|" >> "$REPORT_FILE"
 echo ""
 echo "=== 5. Hooks ==="
 
+# --- 5a. settings.json に登録された Hooks ---
 HOOKS_FOUND=false
+USER_HOOKS_FOUND=false
+PROJECT_HOOKS_FOUND=false
+
 for f in "${ALL_SETTINGS[@]}"; do
     if [ -f "$f" ]; then
         HAS_HOOKS=$(jq 'has("hooks")' "$f" 2>/dev/null || echo "false")
         if [ "$HAS_HOOKS" = "true" ]; then
             HOOKS_FOUND=true
-            
+            FNAME=$(basename "$f")
+
+            # ユーザーレベル vs プロジェクトレベルを区別
+            case "$f" in
+                "$USER_SETTINGS"|"$USER_SETTINGS_LOCAL"|"$MANAGED_SETTINGS")
+                    USER_HOOKS_FOUND=true ;;
+                *)
+                    PROJECT_HOOKS_FOUND=true ;;
+            esac
+
             # Check PreToolUse hooks
             PRE_TOOL=$(jq '.hooks.PreToolUse // [] | length' "$f" 2>/dev/null || echo "0")
             if [ "$PRE_TOOL" -gt 0 ]; then
-                log_pass "PreToolUse フック: ${PRE_TOOL} 個設定 ($(basename $f))"
+                log_pass "PreToolUse フック: ${PRE_TOOL} 個設定 (${FNAME})"
             fi
-            
+
             # Check PostToolUse hooks
             POST_TOOL=$(jq '.hooks.PostToolUse // [] | length' "$f" 2>/dev/null || echo "0")
             if [ "$POST_TOOL" -gt 0 ]; then
-                log_pass "PostToolUse フック: ${POST_TOOL} 個設定 ($(basename $f))"
+                log_pass "PostToolUse フック: ${POST_TOOL} 個設定 (${FNAME})"
             fi
         fi
     fi
@@ -351,16 +385,44 @@ if [ "$HOOKS_FOUND" = "false" ]; then
     log_fail "Hooks 未設定（deny ルールのバグを補完する最も信頼性の高い防御層です）"
 fi
 
-# Check for custom hook scripts in ~/.claude/hooks/
+# ホストの場合: ユーザーレベル hooks の重要性を強調
+if [ "$IS_HOST" = "true" ]; then
+    if [ "$USER_HOOKS_FOUND" = "false" ]; then
+        log_warn "[ホスト] ユーザーレベル hooks 未設定 (~/.claude/settings.json)"
+        echo -e "         → プロジェクト外で Claude Code を使う場合に保護がありません"
+        echo -e "         → ~/.claude/settings.json に hooks セクションを追加してください"
+    fi
+    if [ "$PROJECT_HOOKS_FOUND" = "true" ] && [ "$USER_HOOKS_FOUND" = "false" ]; then
+        log_warn "[ホスト] プロジェクトの hooks はあるがユーザーレベルにはない"
+        echo -e "         → このプロジェクト外で Claude Code を使う場合は無防備です"
+    fi
+fi
+
+# --- 5b. Hook スクリプトの存在確認 ---
+
+# ユーザーレベル: ~/.claude/hooks/
 if [ -d "$HOME/.claude/hooks" ]; then
     HOOK_COUNT=$(find "$HOME/.claude/hooks" -type f \( -name "*.py" -o -name "*.sh" \) 2>/dev/null | wc -l | tr -d ' ')
     if [ "$HOOK_COUNT" -gt 0 ]; then
-        log_pass "カスタムフックスクリプト: ${HOOK_COUNT} 個検出 (~/.claude/hooks/)"
+        log_pass "ユーザーレベル hook スクリプト: ${HOOK_COUNT} 個 (~/.claude/hooks/)"
     else
         log_warn "~/.claude/hooks/ は存在するがスクリプトなし"
     fi
 else
-    log_warn "~/.claude/hooks/ ディレクトリ未作成（自前フックの配置先）"
+    if [ "$IS_HOST" = "true" ]; then
+        log_warn "[ホスト] ~/.claude/hooks/ 未作成（ユーザーレベルの hook スクリプト配置先）"
+    else
+        log_warn "~/.claude/hooks/ ディレクトリ未作成"
+    fi
+fi
+
+# プロジェクトレベル: .claude/hooks/
+if [ -d ".claude/hooks" ]; then
+    PROJ_HOOK_COUNT=$(find ".claude/hooks" -type f \( -name "*.py" -o -name "*.sh" \) 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$PROJ_HOOK_COUNT" -gt 0 ]; then
+        log_pass "プロジェクトレベル hook スクリプト: ${PROJ_HOOK_COUNT} 個 (.claude/hooks/)"
+        echo -e "         → DevContainer へコピーされるベースファイル"
+    fi
 fi
 
 echo "" >> "$REPORT_FILE"
@@ -376,27 +438,56 @@ echo "|------|-------------|" >> "$REPORT_FILE"
 echo ""
 echo "=== 6. MCP サーバー ==="
 
-MCP_FILE=".mcp.json"
-if [ -f "$MCP_FILE" ]; then
-    MCP_COUNT=$(jq '.mcpServers | length' "$MCP_FILE" 2>/dev/null || echo "0")
-    log_warn "MCP サーバー ${MCP_COUNT} 個設定あり（各サーバーの信頼性を確認してください）"
-    
-    # List MCP servers
+# --- 6a. enableAllProjectMcpServers の確認 ---
+for f in "${ALL_SETTINGS[@]}"; do
+    if [ -f "$f" ]; then
+        ENABLE_ALL_MCP=$(check_json_field "$f" '.enableAllProjectMcpServers')
+        if [ "$ENABLE_ALL_MCP" = "false" ]; then
+            log_pass "enableAllProjectMcpServers: false（ホワイトリスト制） ($(basename "$f"))"
+        elif [ "$ENABLE_ALL_MCP" = "true" ]; then
+            log_fail "enableAllProjectMcpServers: true（全プロジェクト MCP を自動許可 — 危険） ($(basename "$f"))"
+        fi
+    fi
+done
+
+# --- 6b. MCP サーバー一覧と監査 ---
+list_mcp_servers() {
+    local file="$1"
+    local label="$2"
+    if [ ! -f "$file" ]; then return; fi
+
+    local count
+    count=$(jq '.mcpServers // {} | length' "$file" 2>/dev/null || echo "0")
+    if [ "$count" -eq 0 ]; then return; fi
+
     echo "" >> "$REPORT_FILE"
-    echo "設定済み MCP サーバー:" >> "$REPORT_FILE"
+    echo "### ${label} (${count} 個)" >> "$REPORT_FILE"
     echo "" >> "$REPORT_FILE"
-    jq -r '.mcpServers | keys[]' "$MCP_FILE" 2>/dev/null | while read srv; do
+
+    local servers
+    servers=$(jq -r '.mcpServers // {} | keys[]' "$file" 2>/dev/null)
+
+    echo "$servers" | while IFS= read -r srv; do
+        [ -z "$srv" ] && continue
+        echo "  - ${srv}"
         echo "- \`${srv}\`" >> "$REPORT_FILE"
     done
-elif [ -f "$CLAUDE_JSON" ]; then
-    MCP_USER=$(jq '.mcpServers // {} | length' "$CLAUDE_JSON" 2>/dev/null || echo "0")
-    if [ "$MCP_USER" -gt 0 ]; then
-        log_warn "~/.claude.json に MCP サーバー ${MCP_USER} 個（ユーザースコープ）"
-    else
-        log_pass "MCP サーバー未設定 or 最小構成"
+
+    log_warn "${label}: MCP サーバー ${count} 個 — 上記のサーバーが信頼できるか確認してください"
+}
+
+# プロジェクトレベル
+MCP_FILE=".mcp.json"
+list_mcp_servers "$MCP_FILE" "プロジェクト MCP (.mcp.json)"
+
+# ユーザーレベル
+list_mcp_servers "$CLAUDE_JSON" "ユーザー MCP (~/.claude.json)"
+
+# どちらも無い場合
+if [ ! -f "$MCP_FILE" ] || [ "$(jq '.mcpServers // {} | length' "$MCP_FILE" 2>/dev/null || echo 0)" -eq 0 ]; then
+    if [ ! -f "$CLAUDE_JSON" ] || [ "$(jq '.mcpServers // {} | length' "$CLAUDE_JSON" 2>/dev/null || echo 0)" -eq 0 ]; then
+        log_pass "MCP サーバー未設定（攻撃面なし）"
     fi
-else
-    log_pass "MCP 設定ファイルなし"
 fi
 
 echo "" >> "$REPORT_FILE"
@@ -516,11 +607,39 @@ EOF
 
 # Insert summary after the header metadata
 TEMP_FILE=$(mktemp)
-awk -v summary="$SUMMARY" '
-    /^## 1\./ { print summary }
-    { print }
-' "$REPORT_FILE" > "$TEMP_FILE"
+SUMMARY_FILE=$(mktemp)
+cat > "$SUMMARY_FILE" << SUMEOF
+
+## サマリー
+
+| 指標 | 値 |
+|------|-----|
+| 総合グレード | ${GRADE_EMOJI} **${GRADE}** |
+| スコア | ${SCORE}% (${PASS}/${TOTAL}) |
+| PASS | ${PASS} |
+| WARN | ${WARN} |
+| FAIL | ${FAIL} |
+
+---
+
+SUMEOF
+
+# macOS awk はマルチバイト文字・変数内改行を正しく処理できないため、
+# sed + cat で挿入する
+{
+  # "## 1." の行番号を取得して、その直前に SUMMARY_FILE を挿入
+  LINE_NUM=$(grep -n "^## 1\." "$REPORT_FILE" | head -1 | cut -d: -f1)
+  if [ -n "$LINE_NUM" ]; then
+    head -n $((LINE_NUM - 1)) "$REPORT_FILE"
+    cat "$SUMMARY_FILE"
+    tail -n +${LINE_NUM} "$REPORT_FILE"
+  else
+    cat "$SUMMARY_FILE"
+    cat "$REPORT_FILE"
+  fi
+} > "$TEMP_FILE"
 mv "$TEMP_FILE" "$REPORT_FILE"
+rm -f "$SUMMARY_FILE"
 
 # ============================================================
 # Recommendations

@@ -1,0 +1,10 @@
+[Unit]
+Description=Zui Threat Intelligence Update (daily IOC database)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -l __HOME__/bin/threat-intel-updater.sh
+StandardOutput=append:__HOME__/.security-ioc/systemd-stdout.log
+StandardError=append:__HOME__/.security-ioc/systemd-stderr.log

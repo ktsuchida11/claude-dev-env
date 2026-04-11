@@ -26,6 +26,8 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - ENABLE_FIREWALL=${ENABLE_FIREWALL:-true}
       - HOST_WORKSPACE_PATH=${PWD}/workspace
+      # .env 暗号化: age 秘密鍵は tmpfs 経由で渡す（環境変数に残さない）
+      # start-devcontainer.sh が docker cp で /run/secrets/age-key に注入 → 復号後に削除
       # Proxy settings (uncomment if behind a corporate proxy)
       # - HTTP_PROXY=${HTTP_PROXY:-}
       # - HTTPS_PROXY=${HTTPS_PROXY:-}
@@ -33,6 +35,8 @@ services:
       # - http_proxy=${HTTP_PROXY:-}
       # - https_proxy=${HTTPS_PROXY:-}
       # - no_proxy=${NO_PROXY:-}
+    tmpfs:
+      - /run/secrets:size=1m,mode=700,uid=1000,gid=1000
     volumes:
       - ./workspace:/workspace:delegated
       - ./.claude:/workspace/.claude-source:ro

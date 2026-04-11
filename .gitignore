@@ -1,6 +1,14 @@
 # === 機密情報 ===
 .env
 .env.local
+.env.keys
+*.decrypted
+*.tmp.env
+
+# === .env 暗号化関連 ===
+# .env.enc（暗号化済み）と .env.example はコミット OK
+!.env.enc
+!.env.example
 
 # === ローカル設定 ===
 .DS_Store

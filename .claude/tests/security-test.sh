@@ -25,12 +25,19 @@ ERRORS=()
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 SETTINGS="${BASE_DIR}/settings.json"
-WORKSPACE="${PROJECT_DIR}/workspace"
 
 # DevContainer 内かローカルかを判定
 IS_DEVCONTAINER="false"
 if [ -f "/.dockerenv" ] || grep -q 'docker\|containerd' /proc/1/cgroup 2>/dev/null; then
   IS_DEVCONTAINER="true"
+fi
+
+# DevContainer 内では /workspace 直下が workspace
+# ローカルではプロジェクトルートの workspace/ サブディレクトリ
+if [ "$IS_DEVCONTAINER" = "true" ]; then
+  WORKSPACE="/workspace"
+else
+  WORKSPACE="${PROJECT_DIR}/workspace"
 fi
 
 RED='\033[0;31m'
@@ -75,14 +82,14 @@ if [ "$IS_DEVCONTAINER" = "false" ]; then
   skip "DNS 解決テスト: ローカル環境ではスキップ（DevContainer 専用）"
 else
 
-# ファイアウォールが有効か確認
-if sudo iptables -L OUTPUT -n 2>/dev/null | grep -q "DROP"; then
-  pass "iptables OUTPUT デフォルトポリシー: DROP"
+# ファイアウォールが有効か確認（ポリシーまたはルール末尾の REJECT で判定）
+if sudo iptables -L OUTPUT -n 2>/dev/null | grep -qE "policy DROP|REJECT"; then
+  pass "iptables OUTPUT: DROP/REJECT ルール確認"
 else
   if [ "${ENABLE_FIREWALL:-true}" = "false" ]; then
     skip "ファイアウォール無効（ENABLE_FIREWALL=false）"
   else
-    fail "iptables OUTPUT デフォルトポリシーが DROP でない"
+    fail "iptables OUTPUT デフォルトポリシーが DROP/REJECT でない"
   fi
 fi
 

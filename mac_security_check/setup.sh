@@ -22,6 +22,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Linux で実行された場合のガード
+if [ "$(uname -s)" = "Linux" ]; then
+    echo "このスクリプトは macOS 専用です。"
+    echo "Linux では以下を使用してください:"
+    echo "  bash host_security/setup.sh"
+    echo "  bash linux_security_check/setup.sh"
+    exit 1
+fi
+
 # カラー定義
 RED='\033[0;31m'
 GREEN='\033[0;32m'

@@ -1,6 +1,6 @@
 # ベースイメージを SHA256 ダイジェストでピン留め（サプライチェーン対策）
-# 更新時: docker pull node:22 && docker inspect --format='{{index .RepoDigests 0}}' node:22
-FROM node:22@sha256:ecabd1cb6956d7acfffe8af6bbfbe2df42362269fd28c227f36367213d0bb777
+# 更新時: docker pull node:24 && docker inspect --format='{{index .RepoDigests 0}}' node:24
+FROM node:24@sha256:80fc934952c8f1b2b4d39907af7211f8a9fff1a4c2cf673fb49099292c251cec
 
 ARG TZ
 ENV TZ="$TZ"
@@ -16,14 +16,8 @@ ENV TZ="$TZ"
 #     https_proxy=${HTTPS_PROXY} \
 #     no_proxy=${NO_PROXY}
 
-# --- npm upgrade (早期実行: 後続の npm install に min-release-age を適用するため) ---
-# node:22 には npm 10.x が同梱。min-release-age は npm >= 11.10.0 で必要
-RUN npm_ver=$(npm --version) && \
-  echo "Current npm: v${npm_ver}" && \
-  npm install -g "npm@>=11.10.0" && \
-  echo "Updated npm: v$(npm --version)"
-
 # Supply chain: ビルド時の npm にもクールダウンを適用
+# node:24 は npm 11.x 同梱のため min-release-age が利用可能
 # workspace/.npmrc はビルド時にマウントされないため、グローバル設定で適用
 RUN npm config set -g ignore-scripts true && \
   npm config set -g save-exact true && \
@@ -57,6 +51,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates \
   curl \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# --- SOPS + age（.env 暗号化・復号） ---
+ARG SOPS_VERSION=3.9.4
+RUN ARCH=$(dpkg --print-architecture) && \
+  curl -fsSL "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.${ARCH}" \
+  -o /usr/local/bin/sops && chmod +x /usr/local/bin/sops && \
+  curl -fsSL "https://dl.filippo.io/age/v1.2.1?for=linux/${ARCH}" | tar -xz --strip-components=1 -C /usr/local/bin/ && \
+  chmod +x /usr/local/bin/age /usr/local/bin/age-keygen
 
 # --- Layer 2: ネットワーク・ファイアウォール ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -210,6 +212,7 @@ RUN npm install -g --ignore-scripts typescript-language-server typescript pyrigh
 COPY init-firewall.sh /usr/local/bin/
 COPY mcp-servers.json /etc/claude-mcp/mcp-servers.json
 COPY setup-mcp.sh /usr/local/bin/setup-mcp.sh
+COPY decrypt-env.sh /usr/local/bin/decrypt-env.sh
 
 USER root
 
@@ -224,7 +227,7 @@ RUN if [ "$ENABLE_JAVA" = "true" ]; then \
   && chmod +x /usr/local/bin/jdtls; \
   fi
 
-RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/setup-mcp.sh && \
+RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/setup-mcp.sh /usr/local/bin/decrypt-env.sh && \
   echo 'Defaults env_keep += "FIREWALL_ALLOWED_PORTS ENABLE_FIREWALL"' > /etc/sudoers.d/node-firewall && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/bin/chmod, /usr/sbin/iptables, /usr/sbin/ip6tables" >> /etc/sudoers.d/node-firewall && \
   chmod 0440 /etc/sudoers.d/node-firewall && \
