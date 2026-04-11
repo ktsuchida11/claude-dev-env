@@ -1,7 +1,8 @@
 # Linux ホストセキュリティ セットアップガイド
 
-Amazon Linux 2023 (AL2023) / WSL2 向けのホストセキュリティ設定ガイド。
+Amazon Linux 2023 (AL2023) / Windows (WSL2) 向けのホストセキュリティ設定ガイド。
 macOS 版の `mac_security_check/COMPLETE-SETUP-GUIDE.md` に対応する Linux 版です。
+Windows ユーザーは WSL2 上でこのガイドの手順を実行してください（[WSL2 利用ガイド](#windows-wsl2-利用ガイド) を参照）。
 
 ## 前提条件
 
@@ -199,6 +200,88 @@ docker info | grep Security
 
 ---
 
+## Windows (WSL2) 利用ガイド
+
+Windows ユーザーは WSL2 上で Linux パスを利用します。ネイティブ Windows / PowerShell には対応していません。
+
+### WSL2 環境の準備
+
+```powershell
+# 管理者 PowerShell で実行
+wsl --install -d Ubuntu
+
+# WSL2 を再起動後、Ubuntu ターミナルで以下を実行
+sudo apt update && sudo apt install -y jq curl git python3
+```
+
+### Docker Desktop の設定
+
+1. Docker Desktop → **Settings** → **General** → **Use the WSL 2 based engine** を有効化
+2. Docker Desktop → **Settings** → **Resources** → **WSL Integration** で Ubuntu を有効化
+3. メモリ割り当てを **4GB 以上** に設定
+
+### systemd の有効化（定期チェック用）
+
+WSL2 ではデフォルトで systemd が無効です。定期チェック（systemd タイマー）を使う場合:
+
+```bash
+# /etc/wsl.conf を編集
+sudo tee /etc/wsl.conf > /dev/null << 'EOF'
+[boot]
+systemd=true
+EOF
+```
+
+PowerShell で WSL を再起動:
+```powershell
+wsl --shutdown
+```
+
+> systemd を有効化しない場合、セットアップの定期チェックステップはスキップされます。
+> セキュリティチェックは手動実行が可能です。
+
+### リポジトリの配置
+
+```bash
+# 推奨: WSL2 ファイルシステム内（高速）
+cd /home/$USER
+git clone <repository-url>
+cd claude-dev-env
+
+# 非推奨: /mnt/c/... はパフォーマンスが大幅に低下
+```
+
+### 秘密鍵管理
+
+WSL2 では以下の優先順位で秘密鍵を管理します:
+
+1. **secret-tool (libsecret)** — `sudo apt install libsecret-tools` でインストール
+2. **ファイルベース** — `~/.config/age/key.txt`（権限 600）
+
+> AWS Secrets Manager は WSL2 からも利用可能です（AWS CLI がインストール・認証済みの場合）。
+
+### 改行コード
+
+リポジトリをクローンする前に Git の改行設定を確認:
+
+```bash
+# WSL2 内で設定（LF を維持）
+git config --global core.autocrlf input
+```
+
+`.sh` ファイルが CRLF になっているとコンテナ内で実行エラーになります。
+
+### WSL2 固有の注意点
+
+| 項目 | 説明 |
+|------|------|
+| ファイアウォール | DevContainer 内の iptables はそのまま動作。Windows 側の設定変更は不要 |
+| VS Code 連携 | VS Code の Remote - WSL 拡張で WSL2 内のプロジェクトを開き、そこから Dev Containers を利用 |
+| ネットワーク | WSL2 のネットワークは NAT モード。Docker Desktop が WSL2 バックエンドを使用するため透過的に動作 |
+| SELinux | WSL2 では利用不可。セキュリティチェックの SELinux 項目は自動スキップされます |
+
+---
+
 ## トラブルシューティング
 
 | 症状 | 原因 | 対処法 |
@@ -210,3 +293,6 @@ docker info | grep Security
 | `jq` が見つからない | 未インストール | `sudo dnf install -y jq` |
 | Docker 権限エラー | docker グループ未所属 | `sudo usermod -aG docker $USER` → 再ログイン |
 | RPM 検証で差異 | 設定ファイルの変更 | `rpm -V <pkg>` の出力を確認。`c` は設定ファイル変更で正常 |
+| WSL2 で `.sh` が実行できない | CRLF 改行 | `git config --global core.autocrlf input` → リポジトリ再クローン |
+| WSL2 で Docker が使えない | Docker Desktop 未連携 | Docker Desktop の WSL Integration で対象ディストロを有効化 |
+| WSL2 でパフォーマンスが遅い | Windows FS を使用 | `/mnt/c/` ではなく `/home/<user>/` にリポジトリを配置 |
