@@ -84,6 +84,10 @@
       "Bash(python3 -c *import*socket*)",
       "Read(.env)",
       "Read(.env.*)",
+      "Write(.env)",
+      "Write(.env.*)",
+      "Edit(.env)",
+      "Edit(.env.*)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
       "Read(~/.gnupg/**)",
@@ -214,6 +218,10 @@
           {
             "type": "command",
             "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/supply-chain-audit.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/env-plaintext-guard.sh"
           }
         ]
       }

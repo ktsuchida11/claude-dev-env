@@ -1,7 +1,10 @@
 # Quick Start Guide
 
 Claude Code セキュア開発環境のセットアップガイド。
+TypeScript / Python / Java の開発に対応した、セキュリティ強化済みの DevContainer 環境です。
 初めての方でも 5 分で環境を起動できます。
+
+**対応プラットフォーム:** macOS / Amazon Linux 2023 / WSL2
 
 ## 前提条件
 
@@ -11,32 +14,81 @@ Claude Code セキュア開発環境のセットアップガイド。
 | VS Code | 最新 | `code --version` |
 | Dev Containers 拡張 | - | VS Code 拡張マーケットで「Dev Containers」をインストール |
 | Claude Pro/Max アカウント<br>**または** Anthropic API Key | - | Claude OAuth の場合はアカウントのみでOK |
+| jq | 1.6 以上 | `jq --version` |
+
+> **jq のインストール:**
+> - macOS: `brew install jq`
+> - Amazon Linux 2023: `sudo dnf install -y jq`
+> - Ubuntu/WSL2: `sudo apt install jq`
+>
+> Hooks（`block-dangerous.sh` 等）の動作に必要です。
+
+**ホストでサプライチェーン対策（Step 2）も行う場合の前提:**
+
+| ツール | 前提バージョン | 確認コマンド | インストール |
+|--------|---------------|-------------|-------------|
+| npm | 11.10.0 以上 | `npm --version` | `npm install -g npm@latest` |
+| pip | 26.0 以上 | `pip --version` | `pip install --upgrade pip` |
+| uv | 0.9.17 以上 | `uv --version` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+
+> バージョンが古い場合、クールダウン設定（`min-release-age`, `exclude-newer`, `uploaded-prior-to`）が利用できません。
+> 詳細は [`cooldown_management/local-cooldown-setup.sh`](cooldown_management/local-cooldown-setup.sh) を参照。
+
+<details>
+<summary>Amazon Linux 2023 追加前提条件（クリックで展開）</summary>
+
+| ツール | 用途 | インストール |
+|--------|------|-------------|
+| AWS CLI v2 | Secrets Manager 連携 | [公式ガイド](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) |
+| python3 | サプライチェーンガード | `sudo dnf install -y python3` |
+| git | バージョン管理 | `sudo dnf install -y git` |
+
+> **秘密鍵管理:** AL2023 では AWS Secrets Manager を使用（IAM ロールで制御）。
+> 詳細は [`linux_security_check/LINUX-SETUP-GUIDE.md`](linux_security_check/LINUX-SETUP-GUIDE.md) を参照。
+
+</details>
 
 **推奨（オプション）:**
 - GitHub Personal Access Token（`gh` CLI 連携用）
 
 ---
 
-## Step 0: ホスト Mac のセキュリティ設定（推奨）
-
-DevContainer を構築する Mac 自体のセキュリティも重要です。
-1コマンドで Claude Code のグローバルセキュリティ設定 + サプライチェーン対策を適用できます。
-
-```bash
-bash mac_security_check/setup.sh
-```
-
-詳細は [`mac_security_check/COMPLETE-SETUP-GUIDE.md`](mac_security_check/COMPLETE-SETUP-GUIDE.md) を参照。
-
----
-
-## Step 1: 環境準備
+## Step 1: リポジトリ取得
 
 ```bash
 # リポジトリをクローン
 git clone <repository-url>
 cd claude-dev-env
+```
 
+---
+
+## Step 2: ホストセキュリティ設定（推奨）
+
+DevContainer を構築するホスト自体のセキュリティも重要です。
+1コマンドで Claude Code のグローバルセキュリティ設定 + サプライチェーン対策を適用できます。
+OS は自動検出されます。
+
+```bash
+# macOS / Linux 共通（OS 自動検出）
+bash host_security/setup.sh
+
+# 全自動（確認なし）
+bash host_security/setup.sh --yes
+
+# Linux で IOC フィードをスキップする場合（ネットワーク制限環境）
+bash host_security/setup.sh --skip-ioc
+```
+
+> npm / pip / uv のバージョンが前提条件を満たしているか事前に確認してください。
+> - macOS: [`mac_security_check/COMPLETE-SETUP-GUIDE.md`](mac_security_check/COMPLETE-SETUP-GUIDE.md)
+> - Linux: [`linux_security_check/LINUX-SETUP-GUIDE.md`](linux_security_check/LINUX-SETUP-GUIDE.md)
+
+---
+
+## Step 3: 環境変数の設定
+
+```bash
 # 環境変数ファイルをコピー
 cp .env.example .env
 ```
@@ -54,36 +106,85 @@ cp .env.example .env
 > Claude Pro/Max の OAuth 接続のみを使う場合、API Key の設定は不要です。
 > コンテナ起動後に `claude` コマンドで OAuth ログインします。
 
+### .env の暗号化（推奨）
+
+API Key などの機密情報を平文で保存するのはリスクがあります。
+SOPS + age で暗号化し、秘密鍵は安全なストレージに格納することで、
+リポジトリ経由の漏洩とファイルシステム上の平文露出を同時に防ぎます。
+
+| プラットフォーム | 秘密鍵の格納先 | 特徴 |
+|----------------|--------------|------|
+| macOS | OS Keychain | ユーザーパスワードで保護 |
+| Amazon Linux 2023 | **AWS Secrets Manager（推奨）** | IAM ロールで細粒度制御、CloudTrail で監査可能 |
+| WSL2 / Ubuntu | secret-tool (libsecret) | D-Bus ベースのキーリング |
+| フォールバック | `~/.config/age/key.txt` (権限 600) | 上記が利用できない場合の最終手段 |
+
+> **Linux (AL2023) の場合:** AWS Secrets Manager の利用を推奨します。
+> IAM ロールで特定のシークレットのみ読み取り可能に制限でき、
+> アクセスログも CloudTrail で自動記録されるため、macOS Keychain と同等以上のセキュリティです。
+> 詳細は [`linux_security_check/LINUX-SETUP-GUIDE.md`](linux_security_check/LINUX-SETUP-GUIDE.md#aws-secrets-manager推奨) を参照。
+
+```bash
+# 前提: sops と age のインストール
+brew install sops age                   # macOS
+# AL2023: GitHub Releases からダウンロード（LINUX-SETUP-GUIDE.md 参照）
+# Ubuntu: sudo apt install age（sops は GitHub Releases から）
+
+# 初回セットアップ（鍵生成 → Keychain/Secrets Manager 格納 → .env 暗号化）
+bash scripts/setup-env-encryption.sh
+```
+
+暗号化後は `.env.enc`（暗号化済み）を git にコミットし、平文の `.env` は削除します。
+DevContainer 起動時に Keychain の秘密鍵で自動復号されます。
+
+詳細は [`SECURITY-GUIDE.md` の .env 暗号化セクション](SECURITY-GUIDE.md#env-暗号化多層防御) を参照。
+
 ---
 
-## Step 2: 構成を選ぶ
+## Step 4: 構成を選ぶ
 
 ```
-Claude OAuth（Pro/Max）のみ使う？
+LangFuse でトレーシングする？（Claude Code のやりとりを記録・分析）
 │
-├─ Yes → docker-compose-without-litellm.yml
-│         （シンプル構成、API Key 不要）
+├─ Yes
+│  │
+│  ├─ OpenAI 等も使う？
+│  │  │
+│  │  ├─ Yes → docker-compose.yml + docker-compose.langfuse.yml
+│  │  │         （LiteLLM + LangFuse）
+│  │  │
+│  │  └─ No  → docker-compose-without-litellm.yml + docker-compose.langfuse.yml
+│  │            （Claude OAuth + LangFuse）
+│  └─
 │
-└─ No（OpenAI 等も使いたい）
+└─ No
    │
-   ├─ LangFuse でトレーシングする？
+   ├─ OpenAI 等も使う？
    │  │
-   │  ├─ Yes → docker-compose.yml + docker-compose.langfuse.yml
-   │  │         （LiteLLM + LangFuse 接続）
+   │  ├─ Yes → docker-compose.yml
+   │  │         （LiteLLM のみ）
    │  │
-   │  └─ No  → docker-compose.yml
-   │            （LiteLLM のみ）
+   │  └─ No  → docker-compose-without-litellm.yml
+   │            （最もシンプル、API Key 不要）
    └─
 ```
 
+> **LangFuse**: Claude Code とのやりとり（プロンプト・レスポンス）をトレースし、
+> コスト・品質の分析に活用できます。Claude OAuth のみの構成でも利用可能です。
+
 ---
 
-## Step 3: 起動
+## Step 5: 起動
 
 選んだ構成に応じてコマンドを実行:
 
 ```bash
-# パターン A: Claude OAuth のみ（推奨・最もシンプル）
+# .env 暗号化を使う場合（推奨）— Keychain から鍵を取得して起動
+bash scripts/start-devcontainer.sh                    # LiteLLM 付き
+bash scripts/start-devcontainer.sh --without-litellm  # Claude OAuth のみ
+
+# 直接起動する場合
+# パターン A: Claude OAuth のみ（最もシンプル）
 docker compose -f docker-compose-without-litellm.yml up -d
 
 # パターン B: LiteLLM 付き
@@ -91,13 +192,16 @@ docker compose up -d
 
 # パターン C: LiteLLM + LangFuse
 docker compose -f docker-compose.yml -f docker-compose.langfuse.yml up -d
+
+# パターン D: Claude OAuth + LangFuse（LiteLLM なし）
+docker compose -f docker-compose-without-litellm.yml -f docker-compose.langfuse.yml up -d
 ```
 
 VS Code で **「Reopen in Container」** を選択（コマンドパレット: `Ctrl+Shift+P` → `Dev Containers: Reopen in Container`）。
 
 ---
 
-## Step 4: 動作確認
+## Step 6: 動作確認
 
 コンテナ内のターミナルで:
 
@@ -115,6 +219,27 @@ bash /workspace/.claude/tests/security-test.sh
 bash /workspace/.claude/tests/hook-test.sh
 ```
 
+### テストで FAIL が出た場合
+
+<details>
+<summary>よくある FAIL と対処法（クリックで展開）</summary>
+
+| FAIL メッセージ | 原因 | 対処法 |
+|----------------|------|--------|
+| `iptables OUTPUT デフォルトポリシーが DROP/REJECT でない` | ファイアウォール初期化失敗 | `sudo /usr/local/bin/init-firewall.sh` を手動実行。`ENABLE_FIREWALL=false` なら SKIP になるのが正常 |
+| `ipset allowed-domains が空` | DNS 解決に失敗 | コンテナのネットワーク接続を確認。`docker compose restart` で再試行 |
+| `外部通信ブロック: example.com に接続できてしまった` | ファイアウォールルール未適用 | `sudo iptables -L OUTPUT -n` で現在のルールを確認。`NET_ADMIN` capability が `docker-compose.yml` にあるか確認 |
+| `/workspace への書き込み: 拒否された` | ボリューム権限不一致 | `docker compose down -v && docker compose up -d` でボリューム再作成 |
+| `settings.json 保護: sandbox.denyWrite に含まれていない` | settings.json の構造不正 | `jq . /workspace/.claude/settings.json` で JSON バリデーション |
+| `.npmrc: ignore-scripts が設定されていない` | .npmrc 未配置 | `/workspace/.npmrc` が存在するか確認。なければ Dockerfile のビルドをやり直す |
+| `.pip.conf: index-url が正しくない` | .pip.conf 未配置またはシンボリックリンク切れ | `ls -la ~/.config/pip/pip.conf` でリンク先を確認 |
+| `--dangerously-skip-permissions: 無効化されていない` | settings.json の設定不足 | `disableBypassPermissionsMode` が `"disable"` に設定されているか確認 |
+| `Hook ファイルが見つからない` | Hooks 未コピー | `/workspace/.claude/hooks/` にファイルがあるか確認。`ls /workspace/.claude/hooks/` |
+
+テストの詳細は [`workspace/CLAUDE.md`](workspace/CLAUDE.md) のセキュリティテストセクションを参照。
+
+</details>
+
 ---
 
 ## 最初のプロジェクトを作る
@@ -126,15 +251,18 @@ cd /workspace
 mkdir my-app && cd my-app
 npm init -y
 
-# パッケージ追加（ignore-scripts=true が自動適用）
+# パッケージ追加（サプライチェーン対策が自動適用）
 npm install express
 
 # ネイティブモジュールが必要な場合
 npm rebuild <package-name>
 ```
 
-> `.npmrc` で `ignore-scripts=true` が設定されているため、`postinstall` スクリプトは実行されません。
-> ネイティブアドオン（`bcrypt` 等）は `npm rebuild` が必要な場合があります。
+> **サプライチェーン対策（`.npmrc` で自動適用）:**
+> - `ignore-scripts=true` — `postinstall` 等のスクリプトを無効化。ネイティブアドオン（`bcrypt` 等）は `npm rebuild <package>` が必要
+> - `min-release-age=7` — 公開から 7 日未満のパッケージバージョンをブロック（npm 11.10.0+）。緊急時は `npm install <pkg> --min-release-age=0` でバイパス
+> - `save-exact=true` — バージョンを固定（`^` なし）
+> - `audit=true` — インストール時に脆弱性チェック
 
 ### Python プロジェクト
 
@@ -148,8 +276,10 @@ uv add fastapi uvicorn
 uv run pytest
 ```
 
-> `uv.toml` の `exclude-newer` で 7 日以内の新規パッケージはブロックされます。
-> 最新版が必要な場合: `uv add <pkg> --exclude-newer "$(date -u +%Y-%m-%dT%H:%M:%SZ)"`
+> **サプライチェーン対策（自動適用）:**
+> - `uv.toml` の `exclude-newer = "7 days"` — 公開 7 日以内の新規パッケージをブロック（uv 0.9.17+）。緊急時: `uv add <pkg> --exclude-newer "0 days"`
+> - `.pip.conf` の `uploaded-prior-to` — pip 向けの同等設定（絶対日付のため `cooldown-update.sh` で定期更新が必要）
+> - レジストリは PyPI に固定済み（`no-extra-index-url = true`）
 
 ### Java プロジェクト
 
@@ -178,7 +308,7 @@ gradle init --type java-application
 Express + React のフルスタックアプリ
 
 ## 技術スタック
-- Backend: Node.js 22 + Express
+- Backend: Node.js 24 + Express
 - Frontend: React 19 + TypeScript
 - DB: PostgreSQL
 
@@ -228,3 +358,4 @@ gh pr create --title "feat: 新機能" --body "変更内容"
 | [SECURITY-GUIDE.md](SECURITY-GUIDE.md) | 4 層セキュリティアーキテクチャ解説 |
 | [workspace/CLAUDE.md](workspace/CLAUDE.md) | DevContainer 内での Claude Code 利用ガイド |
 | [mac_security_check/COMPLETE-SETUP-GUIDE.md](mac_security_check/COMPLETE-SETUP-GUIDE.md) | ホスト Mac のセキュリティチェック詳細 |
+| [linux_security_check/LINUX-SETUP-GUIDE.md](linux_security_check/LINUX-SETUP-GUIDE.md) | Linux (AL2023/WSL2) セキュリティ設定ガイド |

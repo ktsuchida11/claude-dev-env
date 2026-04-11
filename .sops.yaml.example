@@ -1,0 +1,10 @@
+# SOPS 設定テンプレート
+# セットアップ: bash scripts/setup-env-encryption.sh
+# 実行すると、生成された age 公開鍵で .sops.yaml が自動生成されます
+#
+# 手動で作成する場合は、このファイルを .sops.yaml にコピーし、
+# 公開鍵を自分の age 公開鍵に置き換えてください
+creation_rules:
+  - path_regex: \.env$
+    age: >-
+      age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

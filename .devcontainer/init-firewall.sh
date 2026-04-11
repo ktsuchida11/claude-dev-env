@@ -67,7 +67,7 @@ SUMMARY_FAILED_DOMAINS=()
 # --- IPv6 利用可否チェック ---
 HAS_IPV6=true
 if ! ip -6 route show default >/dev/null 2>&1; then
-    echo "NOTE: IPv6 default route not found. IPv6 rules will be configured but may not be active."
+    echo "NOTE: IPv6 not available. Skipping all IPv6 (AAAA) resolution and rules."
     HAS_IPV6=false
 fi
 
@@ -76,9 +76,11 @@ fi
 iptables -P INPUT ACCEPT
 iptables -P FORWARD ACCEPT
 iptables -P OUTPUT ACCEPT
-ip6tables -P INPUT ACCEPT
-ip6tables -P FORWARD ACCEPT
-ip6tables -P OUTPUT ACCEPT
+if [ "$HAS_IPV6" = true ]; then
+    ip6tables -P INPUT ACCEPT
+    ip6tables -P FORWARD ACCEPT
+    ip6tables -P OUTPUT ACCEPT
+fi
 
 # Flush existing filter rules and ipsets
 # NOTE: NAT table is NOT flushed — Docker depends on it for DNS resolution
@@ -87,10 +89,12 @@ iptables -F
 iptables -X
 iptables -t mangle -F
 iptables -t mangle -X
-ip6tables -F
-ip6tables -X
 ipset destroy allowed-domains 2>/dev/null || true
-ipset destroy allowed-domains-v6 2>/dev/null || true
+if [ "$HAS_IPV6" = true ]; then
+    ip6tables -F
+    ip6tables -X
+    ipset destroy allowed-domains-v6 2>/dev/null || true
+fi
 
 # Allow DNS, SSH, and localhost (IPv4)
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
@@ -101,16 +105,20 @@ iptables -A INPUT -i lo -j ACCEPT
 iptables -A OUTPUT -o lo -j ACCEPT
 
 # IPv6: Allow localhost and DNS, drop everything else by default
-ip6tables -A INPUT -i lo -j ACCEPT
-ip6tables -A OUTPUT -o lo -j ACCEPT
-ip6tables -A OUTPUT -p udp --dport 53 -j ACCEPT
-ip6tables -A INPUT -p udp --sport 53 -j ACCEPT
-ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+if [ "$HAS_IPV6" = true ]; then
+    ip6tables -A INPUT -i lo -j ACCEPT
+    ip6tables -A OUTPUT -o lo -j ACCEPT
+    ip6tables -A OUTPUT -p udp --dport 53 -j ACCEPT
+    ip6tables -A INPUT -p udp --sport 53 -j ACCEPT
+    ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+    ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+fi
 
 # Create ipsets with CIDR support (IPv4 + IPv6)
 ipset create allowed-domains hash:net
-ipset create allowed-domains-v6 hash:net family inet6
+if [ "$HAS_IPV6" = true ]; then
+    ipset create allowed-domains-v6 hash:net family inet6
+fi
 
 # Fetch GitHub IP ranges
 echo "Fetching GitHub IP ranges..."
@@ -146,13 +154,15 @@ for cidr in \
     "74.125.0.0/16"; do
     ipset add allowed-domains "$cidr" -exist
 done
-for cidr6 in \
-    "2404:6800::/32" \
-    "2607:f8b0::/32" \
-    "2a00:1450::/32" \
-    "2800:3f0::/32"; do
-    ipset add allowed-domains-v6 "$cidr6" -exist
-done
+if [ "$HAS_IPV6" = true ]; then
+    for cidr6 in \
+        "2404:6800::/32" \
+        "2607:f8b0::/32" \
+        "2a00:1450::/32" \
+        "2800:3f0::/32"; do
+        ipset add allowed-domains-v6 "$cidr6" -exist
+    done
+fi
 
 # Resolve and add other allowed domains (A + AAAA records)
 ALL_DOMAINS=(
@@ -210,15 +220,17 @@ for domain in "${ALL_DOMAINS[@]}"; do
         done < <(echo "$ips")
     fi
 
-    # IPv6 (AAAA records) — リトライ付き
-    ip6s=$(resolve_aaaa "$domain" || true)
-    if [ -n "$ip6s" ]; then
-        while read -r ip6; do
-            echo "  Adding IPv6 $ip6 for $domain"
-            ipset add allowed-domains-v6 "$ip6" -exist
-            SUMMARY_IPV6_COUNT=$((SUMMARY_IPV6_COUNT + 1))
-            domain_resolved=true
-        done < <(echo "$ip6s")
+    # IPv6 (AAAA records) — IPv6 が利用可能な場合のみ
+    if [ "$HAS_IPV6" = true ]; then
+        ip6s=$(resolve_aaaa "$domain" || true)
+        if [ -n "$ip6s" ]; then
+            while read -r ip6; do
+                echo "  Adding IPv6 $ip6 for $domain"
+                ipset add allowed-domains-v6 "$ip6" -exist
+                SUMMARY_IPV6_COUNT=$((SUMMARY_IPV6_COUNT + 1))
+                domain_resolved=true
+            done < <(echo "$ip6s")
+        fi
     fi
 
     if [ "$domain_resolved" = false ]; then
@@ -257,7 +269,10 @@ iptables -A OUTPUT -d 172.16.0.0/12 -j ACCEPT
 # FIREWALL_ALLOWED_PORTS: ホスト側サービス (Streamlit, LangFuse 等) へのアクセスを
 # 許可するポート。.env で設定する（例: 443,80,3000,8501）
 HOST_DOCKER_IP=$(dig +short A host.docker.internal 2>/dev/null || true)
-HOST_DOCKER_IP6=$(dig +short AAAA host.docker.internal 2>/dev/null || true)
+HOST_DOCKER_IP6=""
+if [ "$HAS_IPV6" = true ]; then
+    HOST_DOCKER_IP6=$(dig +short AAAA host.docker.internal 2>/dev/null || true)
+fi
 if [ -n "$HOST_DOCKER_IP" ] || [ -n "$HOST_DOCKER_IP6" ]; then
     ALLOWED_PORTS="${FIREWALL_ALLOWED_PORTS:-443,80}"
     echo "Allowing host.docker.internal (IPv4: ${HOST_DOCKER_IP:-none}, IPv6: ${HOST_DOCKER_IP6:-none}) on ports: $ALLOWED_PORTS..."
@@ -267,7 +282,7 @@ if [ -n "$HOST_DOCKER_IP" ] || [ -n "$HOST_DOCKER_IP6" ]; then
             iptables -A OUTPUT -d "$HOST_DOCKER_IP" -p tcp --dport "$port" -j ACCEPT
             iptables -A INPUT -s "$HOST_DOCKER_IP" -p tcp --sport "$port" -m state --state ESTABLISHED -j ACCEPT
         fi
-        if [ -n "$HOST_DOCKER_IP6" ]; then
+        if [ "$HAS_IPV6" = true ] && [ -n "$HOST_DOCKER_IP6" ]; then
             ip6tables -A OUTPUT -d "$HOST_DOCKER_IP6" -p tcp --dport "$port" -j ACCEPT
             ip6tables -A INPUT -s "$HOST_DOCKER_IP6" -p tcp --sport "$port" -m state --state ESTABLISHED -j ACCEPT
         fi
@@ -278,9 +293,11 @@ fi
 iptables -P INPUT DROP
 iptables -P FORWARD DROP
 iptables -P OUTPUT DROP
-ip6tables -P INPUT DROP
-ip6tables -P FORWARD DROP
-ip6tables -P OUTPUT DROP
+if [ "$HAS_IPV6" = true ]; then
+    ip6tables -P INPUT DROP
+    ip6tables -P FORWARD DROP
+    ip6tables -P OUTPUT DROP
+fi
 
 # Allow established connections
 iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
@@ -288,11 +305,15 @@ iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # Allow outbound traffic to allowed domains only (IPv4 + IPv6)
 iptables -A OUTPUT -m set --match-set allowed-domains dst -j ACCEPT
-ip6tables -A OUTPUT -m set --match-set allowed-domains-v6 dst -j ACCEPT
+if [ "$HAS_IPV6" = true ]; then
+    ip6tables -A OUTPUT -m set --match-set allowed-domains-v6 dst -j ACCEPT
+fi
 
 # Reject all other outbound traffic
 iptables -A OUTPUT -j REJECT --reject-with icmp-admin-prohibited
-ip6tables -A OUTPUT -j REJECT --reject-with icmp6-adm-prohibited
+if [ "$HAS_IPV6" = true ]; then
+    ip6tables -A OUTPUT -j REJECT --reject-with icmp6-adm-prohibited
+fi
 
 # --- ファイアウォール初期化サマリー ---
 echo ""

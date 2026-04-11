@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# cooldown-update.sh — pip.conf / uv.toml の絶対日付を自動更新
+# cooldown-update.sh — pip.conf の絶対日付を自動更新
 #
-# pip (uploaded-prior-to) と uv (exclude-newer) は絶対日付のみ対応のため、
-# 定期的に更新する必要がある。
-# ※ npm (min-release-age) は相対日数対応のため更新不要
+# pip (uploaded-prior-to) は絶対日付のみ対応のため、定期的に更新する必要がある。
+# ※ npm (min-release-age) と uv (exclude-newer) は相対期間対応のため更新不要
 # ローカルPC と DevContainer 内の両方の設定ファイルを更新する。
 #
 # 使い方:
@@ -22,12 +21,10 @@ COOLDOWN_DAYS="${1:-7}"
 case "$(uname -s)" in
   Darwin)
     COOLDOWN_DATE=$(date -u -v-${COOLDOWN_DAYS}d +%Y-%m-%d)
-    COOLDOWN_DATETIME=$(date -u -v-${COOLDOWN_DAYS}d +%Y-%m-%dT00:00:00Z)
     PIP_CONF="$HOME/Library/Application Support/pip/pip.conf"
     ;;
   Linux)
     COOLDOWN_DATE=$(date -u -d "$COOLDOWN_DAYS days ago" +%Y-%m-%d)
-    COOLDOWN_DATETIME=$(date -u -d "$COOLDOWN_DAYS days ago" +%Y-%m-%dT00:00:00Z)
     PIP_CONF="$HOME/.config/pip/pip.conf"
     ;;
   *)
@@ -35,7 +32,6 @@ case "$(uname -s)" in
     ;;
 esac
 
-UV_TOML="$HOME/.config/uv/uv.toml"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -43,11 +39,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 if [ -f "/.dockerenv" ] || grep -q 'docker\|containerd' /proc/1/cgroup 2>/dev/null; then
   # DevContainer 内: /workspace 直下
   DEVCONTAINER_PIP_CONF="/workspace/.pip.conf"
-  DEVCONTAINER_UV_TOML="/workspace/uv.toml"
 else
   # ローカル: プロジェクトルートからの相対パス
   DEVCONTAINER_PIP_CONF="${PROJECT_ROOT}/workspace/.pip.conf"
-  DEVCONTAINER_UV_TOML="${PROJECT_ROOT}/workspace/uv.toml"
 fi
 
 # --- 汎用アップデート関数 ---
@@ -87,8 +81,7 @@ update_config() {
 echo "=========================================="
 echo " Cooldown Update (${COOLDOWN_DAYS}日前)"
 echo " pip:  ${COOLDOWN_DATE}"
-echo " uv:   ${COOLDOWN_DATETIME}"
-echo " ※ npm は相対日数 (min-release-age) のため更新不要"
+echo " ※ npm (min-release-age) と uv (exclude-newer) は相対期間のため更新不要"
 echo "=========================================="
 echo ""
 
@@ -99,7 +92,6 @@ check_staleness() {
   local conf_file="$1"
   local label="$2"
   local key="$3"
-  local date_format="$4"  # "date" or "datetime"
 
   if [ ! -f "$conf_file" ]; then
     return
@@ -139,12 +131,10 @@ check_staleness() {
 }
 
 if [ "${1:-}" = "--check" ]; then
-  echo "--- 日付の鮮度チェック ---"
+  echo "--- 日付の鮮度チェック（pip のみ） ---"
   echo ""
-  check_staleness "$DEVCONTAINER_PIP_CONF" "DevContainer .pip.conf" "uploaded-prior-to" "date"
-  check_staleness "$DEVCONTAINER_UV_TOML" "DevContainer uv.toml" "exclude-newer" "datetime"
-  check_staleness "$PIP_CONF" "ローカル pip.conf" "uploaded-prior-to" "date"
-  check_staleness "$UV_TOML" "ローカル uv.toml" "exclude-newer" "datetime"
+  check_staleness "$DEVCONTAINER_PIP_CONF" "DevContainer .pip.conf" "uploaded-prior-to"
+  check_staleness "$PIP_CONF" "ローカル pip.conf" "uploaded-prior-to"
   echo ""
   exit 0
 fi
@@ -153,12 +143,6 @@ fi
 echo "--- pip (uploaded-prior-to) ---"
 update_config "$PIP_CONF" "ローカル pip.conf" "uploaded-prior-to" "$COOLDOWN_DATE"
 update_config "$DEVCONTAINER_PIP_CONF" "DevContainer .pip.conf" "uploaded-prior-to" "$COOLDOWN_DATE"
-echo ""
-
-# --- uv ---
-echo "--- uv (exclude-newer) ---"
-update_config "$UV_TOML" "ローカル uv.toml" "exclude-newer" "\"${COOLDOWN_DATETIME}\""
-update_config "$DEVCONTAINER_UV_TOML" "DevContainer uv.toml" "exclude-newer" "\"${COOLDOWN_DATETIME}\""
 echo ""
 
 echo "=========================================="

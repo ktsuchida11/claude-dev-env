@@ -5,7 +5,8 @@ services:
     ports:
       - "4000:4000"
     env_file:
-      - .env
+      - path: .env
+        required: false
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
       interval: 10s
@@ -56,6 +57,8 @@ services:
       - ENABLE_FIREWALL=${ENABLE_FIREWALL:-true}
       # host.docker.internal 経由でホスト側サービスへアクセスを許可するポート
       - FIREWALL_ALLOWED_PORTS=${FIREWALL_ALLOWED_PORTS:-443,80}
+      # .env 暗号化: age 秘密鍵は tmpfs 経由で渡す（環境変数に残さない）
+      # start-devcontainer.sh が docker cp で /run/secrets/age-key に注入 → 復号後に削除
       - HOST_WORKSPACE_PATH=${PWD}/workspace
       # Supply Chain Guard (set ENABLE_SUPPLY_CHAIN_GUARD=false in .env to disable)
       - ENABLE_SUPPLY_CHAIN_GUARD=${ENABLE_SUPPLY_CHAIN_GUARD:-true}
@@ -76,6 +79,8 @@ services:
       # - http_proxy=${HTTP_PROXY:-}
       # - https_proxy=${HTTPS_PROXY:-}
       # - no_proxy=${NO_PROXY:-}
+    tmpfs:
+      - /run/secrets:size=1m,mode=700,uid=1000,gid=1000
     volumes:
       - ./workspace:/workspace:delegated
       - ./.claude:/workspace/.claude-source:ro

@@ -12,6 +12,7 @@
 - **作業ディレクトリ**: `/workspace` — すべてのプロジェクトはここに配置する
 - **書き込み可能**: `/workspace`、パッケージキャッシュ (`~/.npm`, `~/.cache`, `~/.m2/repository`, `~/.gradle`)、`/tmp`
 - **読み取り不可**: `~/.ssh`, `~/.aws`, `~/.gnupg`, `.env`, `.env.*`
+- **書き込み不可**: `.env`, `.env.*`（暗号化は `scripts/setup-env-encryption.sh` で行う）
 - **設定ファイル変更不可**: `settings.json`, `.claude.json`, `.mcp.json` は直接編集しないこと
 
 ### ネットワーク
@@ -50,7 +51,7 @@
 
 | 言語                    | バージョン       | パッケージマネージャ | Linter   | Formatter   |
 | ----------------------- | ---------------- | -------------------- | -------- | ----------- |
-| TypeScript / JavaScript | Node.js 22       | npm                  | ESLint 9 | Prettier    |
+| TypeScript / JavaScript | Node.js 24       | npm                  | ESLint 9 | Prettier    |
 | Python                  | 3.12             | uv                   | Ruff     | Ruff format |
 | Java                    | JDK 21 (Temurin) | Maven / Gradle       | -        | -           |
 
@@ -134,7 +135,7 @@ uv run pytest              # テスト
 
 - **Layer 1**: 設定ファイルによるネイティブ防御
   - `.npmrc` — `ignore-scripts=true`, `save-exact=true`, `min-release-age=7`
-  - `uv.toml` — `exclude-newer`（RFC 3339 絶対日時、要定期更新）, レジストリ固定
+  - `uv.toml` — `exclude-newer`（相対期間 `"7 days"`、更新不要）, レジストリ固定
   - `.pip.conf` — `uploaded-prior-to`（絶対日付）, レジストリ固定
   - `.mvn-settings.xml` — Maven Central固定
 - **Layer 2**: Pre-Install ガード — lockfileチェック、typosquatting検知、クールダウン確認（`supply-chain-guard.sh`）
@@ -148,16 +149,16 @@ uv run pytest              # テスト
 | ツール | 設定ファイル | 設定キー | 形式 | 定期更新 |
 | --- | --- | --- | --- | --- |
 | npm v11.10.0+ | `.npmrc` | `min-release-age=7` | 日数（相対） | 不要 |
-| uv v0.6.0+ | `uv.toml` | `exclude-newer = "<7日前の日時>"` | RFC 3339 絶対日時 | 要（`cooldown-update.sh`） |
+| uv v0.9.17+ | `uv.toml` | `exclude-newer = "7 days"` | 相対期間 | 不要 |
 | pip v26.0+ | `.pip.conf` | `uploaded-prior-to = 2026-04-06` | 絶対日付 | 要（`cooldown-update.sh`） |
 
 緊急バイパス:
 
 - npm: `npm install <pkg> --min-release-age=0`
-- uv: `uv add <pkg> --exclude-newer "$(date -u +%Y-%m-%dT%H:%M:%SZ)"`
+- uv: `uv add <pkg> --exclude-newer "0 days"`
 - pip: `pip install --uploaded-prior-to=$(date -Idate) <pkg>`
 
-> **注意**: pip/uv は絶対日付のため `cooldown-update.sh` で定期更新が必要。npm のみ相対日数なので更新不要
+> **注意**: pip のみ絶対日付のため `cooldown-update.sh` で定期更新が必要。npm と uv は相対期間のため更新不要
 
 無効化: `ENABLE_SUPPLY_CHAIN_GUARD=false`
 
@@ -181,6 +182,7 @@ uv run pytest              # テスト
 | `gha-security-check.sh` | PostToolUse(Edit/Write) | `.github/workflows/*.yml` の編集・作成 | 常に 0 | 警告のみ | jq |
 | `lint-on-save.sh` | PostToolUse(Edit) | `.py`, `.js`, `.ts`, `.jsx`, `.tsx` の編集 | 常に 0 | サイレント | ruff, eslint, prettier |
 | `supply-chain-audit.sh` | PostToolUse(Bash) | パッケージインストールコマンド実行後 | 常に 0 | 警告のみ | npm, pip-audit |
+| `env-plaintext-guard.sh` | PostToolUse(Bash) | `git commit` 実行後 | 常に 0 | 警告のみ | jq |
 | `langfuse_hook.py` | Stop | セッション終了 | 常に 0 | サイレント | python3, langfuse SDK |
 
 ### 各フックの詳細
@@ -191,6 +193,7 @@ uv run pytest              # テスト
 - **gha-security-check.sh** — スクリプトインジェクション、`pull_request_target` + HEAD checkout、シークレット漏洩、`write-all` 権限など 10 項目を検出
 - **lint-on-save.sh** — Python: `ruff check --fix` + `ruff format`、JS/TS: `eslint --fix` + `prettier --write`（利用可能な場合のみ）
 - **supply-chain-audit.sh** — `npm audit` / `pip-audit` を自動実行し、脆弱性件数をサマリ表示
+- **env-plaintext-guard.sh** — `git commit` 後に実行。ステージされた `.env` ファイルが平文かどうかを検査し、暗号化されていない場合は警告。`.env.keys` や age 秘密鍵のコミットも検出
 - **langfuse_hook.py** — `TRACE_TO_LANGFUSE=true` 時のみ動作。会話トランスクリプトを LangFuse に送信。ファイルロックで排他制御
 
 ## セキュリティテスト

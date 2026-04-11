@@ -13,13 +13,14 @@
 #
 # 対象:
 #   - npm:  ~/.npmrc に min-release-age, save-exact, ignore-scripts を追加
-#   - uv:   ~/.config/uv/uv.toml に exclude-newer を追加
-#   - pip:  ~/.config/pip/pip.conf に uploaded-prior-to を追加
+#   - uv:   ~/.config/uv/uv.toml に exclude-newer を追加（相対期間、更新不要）
+#   - pip:  ~/.config/pip/pip.conf に uploaded-prior-to を追加（絶対日付、要定期更新）
 #
 # 注意:
 #   - 既存の設定ファイルはバックアップ（.bak）を作成してからマージ
-#   - pip の uploaded-prior-to は絶対日付のため定期的な更新が必要
-#     → pip-cooldown-update.sh で自動更新可能
+#   - npm (min-release-age) と uv (exclude-newer) は相対期間のため定期更新不要
+#   - pip の uploaded-prior-to のみ絶対日付のため定期的な更新が必要
+#     → cooldown-update.sh で自動更新可能
 
 set -euo pipefail
 
@@ -65,12 +66,6 @@ get_cooldown_date() {
 }
 
 COOLDOWN_DATE=$(get_cooldown_date)
-
-# uv 用: RFC 3339 形式の日時文字列
-get_cooldown_datetime() {
-  echo "${COOLDOWN_DATE}T00:00:00Z"
-}
-COOLDOWN_DATETIME=$(get_cooldown_datetime)
 
 # --- 色付き出力 ---
 GREEN='\033[0;32m'
@@ -141,7 +136,7 @@ version_gte() {
 # --- クールダウン対応の最小バージョン ---
 NPM_MIN_VERSION="11.10.0"    # min-release-age サポート
 PIP_MIN_VERSION="26.0"       # uploaded-prior-to サポート
-UV_MIN_VERSION="0.6.0"       # exclude-newer サポート（ISO 8601 duration）
+UV_MIN_VERSION="0.9.17"      # exclude-newer 相対期間サポート（"7 days" 形式）
 
 # --- バージョンチェック ---
 VERSION_WARNINGS=""
@@ -191,10 +186,10 @@ check_uv_version() {
   current=$(uv self version 2>/dev/null | sed 's/^uv //' || uv --version 2>/dev/null | sed 's/^uv //' || echo "0.0.0")
 
   if version_gte "$current" "$UV_MIN_VERSION"; then
-    ok "uv v${current} (>= ${UV_MIN_VERSION} ✓ exclude-newer 対応)"
+    ok "uv v${current} (>= ${UV_MIN_VERSION} ✓ exclude-newer 相対期間対応)"
     return 0
   else
-    error "uv v${current} — exclude-newer には v${UV_MIN_VERSION}+ が必要です"
+    error "uv v${current} — exclude-newer 相対期間には v${UV_MIN_VERSION}+ が必要です"
     echo ""
     info "  アップグレード方法:"
     echo "    uv self update"
@@ -364,10 +359,10 @@ fi
 
 if [ -z "$CHECK_ONLY" ] && [ -n "$UV_OK" ]; then
   if ! has_config "$UV_TOML" "exclude-newer"; then
-    # uv の exclude-newer は RFC 3339 絶対日時のみ対応 → cooldown-update.sh で定期更新
+    # uv 0.9.17+ は相対期間に対応。定期更新不要。
     echo ""
     info "以下の設定を ${UV_TOML} に追加します:"
-    echo "  exclude-newer = \"${COOLDOWN_DATETIME}\""
+    echo "  exclude-newer = \"${COOLDOWN_DAYS} days\""
     echo ""
 
     if confirm "${UV_TOML} を作成/更新しますか？"; then
@@ -379,8 +374,9 @@ if [ -z "$CHECK_ONLY" ] && [ -n "$UV_OK" ]; then
 # Supply Chain Security: uv global configuration
 # added by local-cooldown-setup.sh
 
-# クールダウン: 絶対日時（cooldown-update.sh で定期更新）
-exclude-newer = "${COOLDOWN_DATETIME}"
+# クールダウン: 公開から${COOLDOWN_DAYS}日未満のバージョンをブロック（相対期間指定）
+# uv 0.9.17+ で duration 形式に対応。定期更新不要。
+exclude-newer = "${COOLDOWN_DAYS} days"
 
 [pip]
 # レジストリを公式 PyPI のみに固定
@@ -390,13 +386,30 @@ EOF
       else
         echo "" >> "$UV_TOML"
         echo "# Supply Chain Security (added by local-cooldown-setup.sh)" >> "$UV_TOML"
-        echo "exclude-newer = \"${COOLDOWN_DATETIME}\"" >> "$UV_TOML"
+        echo "exclude-newer = \"${COOLDOWN_DAYS} days\"" >> "$UV_TOML"
       fi
 
       ok "uv 設定を更新しました"
     fi
   else
-    ok "uv — すべての設定が適用済みです"
+    # 既存の設定が絶対日時の場合、相対期間への移行を提案
+    current_value=$(grep "^exclude-newer" "$UV_TOML" | head -1 | sed 's/.*=\s*//' | tr -d ' "')
+    if echo "$current_value" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}'; then
+      warn "exclude-newer が絶対日時 (${current_value}) です。相対期間への移行を推奨します"
+      info "  推奨値: exclude-newer = \"${COOLDOWN_DAYS} days\"（定期更新不要）"
+      echo ""
+      if confirm "相対期間に更新しますか？"; then
+        backup_file "$UV_TOML"
+        if [ "$OS_TYPE" = "macos" ]; then
+          sed -i '' "s|^exclude-newer.*|exclude-newer = \"${COOLDOWN_DAYS} days\"|" "$UV_TOML"
+        else
+          sed -i "s|^exclude-newer.*|exclude-newer = \"${COOLDOWN_DAYS} days\"|" "$UV_TOML"
+        fi
+        ok "uv 設定を相対期間に更新しました"
+      fi
+    else
+      ok "uv — すべての設定が適用済みです"
+    fi
   fi
 fi
 echo ""
@@ -507,8 +520,9 @@ echo "=========================================="
 echo ""
 
 if [ -z "$CHECK_ONLY" ]; then
-  info "pip/uv は絶対日付のため定期的な更新が必要です"
-  info "以下のコマンドで pip.conf と uv.toml を一括更新できます:"
+  info "npm と uv は相対期間のため定期更新不要です"
+  info "pip のみ絶対日付のため定期的な更新が必要です"
+  info "以下のコマンドで pip.conf を更新できます:"
   echo ""
   echo "  bash $(dirname "$0")/cooldown-update.sh"
   echo ""

@@ -20,7 +20,8 @@ fi
 
 # rm -rf with dangerous targets (/, ~, $HOME, ..) — 完全ブロック
 # rm 自体は settings.json の allow に含まれていないため、ユーザー確認プロンプトが出る
-if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+)*(\/|~|\$HOME|\.\.)'; then
+# /workspace/... 等の安全なパスは許可（末尾または後続がスペースの場合のみブロック）
+if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+)*(\/(\s|$)|~|(\$HOME|\$\{HOME\})|\.\.)'; then
   echo '{"decision": "block", "reason": "Blocked: rm with dangerous target path (/, ~, $HOME, ..)"}' >&2
   exit 2
 fi
