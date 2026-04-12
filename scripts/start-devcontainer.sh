@@ -65,7 +65,12 @@ cd "$PROJECT_ROOT"
 echo "[start] docker compose -f $COMPOSE_FILE up -d"
 docker compose -f "$COMPOSE_FILE" up -d
 
-# 鍵がある場合、docker cp で tmpfs に注入
+# 鍵がある場合、docker exec でコンテナの tmpfs に注入
+#
+# 注: docker cp は tmpfs マウントポイントの下（イメージレイヤー）に書き込むため、
+# 実行時の tmpfs からは見えない（Docker の既知の挙動）。
+# docker exec -i で stdin からコンテナ内のプロセスに渡すと、
+# 正しく tmpfs 上に配置される。
 if [ "$HAS_KEY" = true ]; then
     # dev コンテナ名を取得
     DEV_CONTAINER=$(docker compose -f "$COMPOSE_FILE" ps -q dev 2>/dev/null)
@@ -73,22 +78,24 @@ if [ "$HAS_KEY" = true ]; then
     if [ -z "$DEV_CONTAINER" ]; then
         echo "[start] WARN: dev コンテナが見つかりません — 鍵の注入をスキップ"
     else
-        # 一時ファイルに鍵を書き出し（ホスト側 tmpfs）
-        TMPKEY=$(mktemp "${TMPDIR:-/tmp}/age-key.XXXXXX")
-        printf '%s' "$AGE_SECRET_KEY" > "$TMPKEY"
-        chmod 600 "$TMPKEY"
+        # コンテナが起動完了するまで待機（最大 30 秒）
+        for i in $(seq 1 30); do
+            if docker exec "$DEV_CONTAINER" test -d /run/secrets 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
 
-        # docker cp でコンテナの tmpfs に注入
-        docker cp "$TMPKEY" "${DEV_CONTAINER}:/run/secrets/age-key"
-        docker exec "$DEV_CONTAINER" chmod 600 /run/secrets/age-key
-        docker exec "$DEV_CONTAINER" chown node:node /run/secrets/age-key
-
-        # ホスト側の一時ファイルを安全に削除
-        dd if=/dev/zero of="$TMPKEY" bs=$(wc -c < "$TMPKEY") count=1 2>/dev/null || true
-        rm -f "$TMPKEY"
-
-        echo "[start] 鍵をコンテナの /run/secrets/age-key に配置しました"
-        echo "[start] postStartCommand (decrypt-env.sh) が復号後に自動削除します"
+        # docker exec -i で stdin から tmpfs に直接書き込み
+        # （docker cp は tmpfs 下のレイヤーに書き込むため使えない）
+        if printf '%s' "$AGE_SECRET_KEY" | \
+           docker exec -i -u node "$DEV_CONTAINER" \
+             sh -c 'umask 077 && cat > /run/secrets/age-key'; then
+            echo "[start] 鍵をコンテナの /run/secrets/age-key に配置しました"
+            echo "[start] postStartCommand (decrypt-env.sh) が復号後に自動削除します"
+        else
+            echo "[start] ERROR: 鍵の注入に失敗しました"
+        fi
     fi
 
     # メモリ上の変数もクリア
