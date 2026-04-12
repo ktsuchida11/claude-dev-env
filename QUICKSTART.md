@@ -437,6 +437,102 @@ gh pr create --title "feat: 新機能" --body "変更内容"
 
 ---
 
+## 複数プロジェクトの同時実行
+
+同じ PC で複数のプロジェクト（例: `~/work/project-a/` と `~/work/project-b/`）で
+この DevContainer 環境を同時に動かすための設定ガイドです。
+
+### 競合しないもの（自動で分離されます）
+
+Docker Compose がプロジェクトディレクトリ名で自動的に名前空間を分けるため、以下は対応不要:
+
+- **コンテナ名・ボリューム名** — `project-a_claude-config` / `project-b_claude-config` のように自動プレフィックス付与
+- **Docker ネットワーク** — プロジェクトごとに独立した default ネットワーク
+- **ホストバインドマウント** — 各プロジェクトの `./workspace/` に相対マウント
+- **コンテナ内のファイアウォール** — コンテナごとに独立した iptables
+
+### 競合するもの（対応が必要）
+
+#### 1. LiteLLM のポート（4000 番）
+
+`docker-compose.yml` の LiteLLM はホスト側ポート 4000 を使います。
+2 プロジェクト目以降は `.env` で別ポートを指定してください:
+
+```bash
+# プロジェクト B の .env に追加
+LITELLM_HOST_PORT=4001
+```
+
+コンテナ内部からは従来通り `http://litellm:4000` でアクセスでき、
+ホスト側からのアクセスのみ 4001 番に変わります（DevContainer 利用には影響なし）。
+
+**もっとシンプルな解決策:** 副プロジェクトは `--without-litellm` で起動する:
+
+```bash
+bash scripts/start-devcontainer.sh --without-litellm
+```
+
+#### 2. LangFuse のポート（3000 番）
+
+`docker-compose.langfuse.yml` を使う場合、LangFuse はホスト側 3000 番を使用。
+同時に複数プロジェクトで LangFuse を使いたい場合は、
+`docker-compose.langfuse.yml` の `ports` を編集するか、
+1 プロジェクトだけで LangFuse を有効化する運用を推奨します。
+
+#### 3. age 秘密鍵（Keychain）
+
+現在の実装では全プロジェクトで同じ age 鍵 (`claude-devcontainer-age-key`) を共有します。
+つまり、プロジェクト A で暗号化した `.env.enc` はプロジェクト B でも復号できます。
+
+**プロジェクトごとに別の鍵を使いたい場合:**
+
+```bash
+# プロジェクト B で別の鍵ペアを使う例
+export KEYCHAIN_SERVICE_OVERRIDE="claude-devcontainer-age-key-project-b"
+# ↑ この仕組みは現状未実装。将来対応予定
+```
+
+現状は「1 つの age 鍵で全プロジェクトを暗号化」が既定の運用です。
+プロジェクトごとに鍵を完全分離したい場合は、`scripts/setup-env-encryption.sh` と
+`scripts/start-devcontainer.sh` の `KEYCHAIN_SERVICE` 変数を書き換えてください。
+
+### 推奨運用パターン
+
+| パターン | メインプロジェクト | 副プロジェクト |
+|---------|------------------|--------------|
+| **A: シンプル（推奨）** | `docker compose up` フル構成 | `--without-litellm` で起動 |
+| **B: 両方 LiteLLM** | 標準 4000 | `.env` で `LITELLM_HOST_PORT=4001` |
+| **C: 開発/検証分離** | LangFuse 付き完全構成 | 最小構成（Claude OAuth のみ） |
+
+### 起動・停止の確認
+
+```bash
+# 現在動いている全プロジェクトを確認
+docker compose ls
+
+# 特定プロジェクトだけ停止
+cd ~/work/project-a/claude-dev-env
+docker compose down
+
+# 全プロジェクトを一括停止（注意: 他の無関係な compose も止まる）
+docker ps -q | xargs -r docker stop
+```
+
+### リソース消費の目安
+
+1 プロジェクトあたりの概算:
+
+| 構成 | メモリ | CPU |
+|------|--------|-----|
+| 最小（`--without-litellm`） | ~1.5GB | 1 core |
+| 標準（LiteLLM 付き） | ~2.5GB | 1-2 core |
+| フル（LangFuse 付き） | ~4GB | 2-3 core |
+
+Docker Desktop のメモリ割り当てを、同時実行するプロジェクト数 × 上記 + 2GB 以上に
+設定してください（例: 最小構成 3 プロジェクト並行 → 6.5GB 以上）。
+
+---
+
 ## トラブルシューティング
 
 | 症状 | 原因 | 対処法 |
@@ -449,6 +545,8 @@ gh pr create --title "feat: 新機能" --body "変更内容"
 | 権限エラー | `/workspace` 以外への書き込み | Sandbox で制限されている。`/workspace` 内で作業する |
 | LiteLLM に接続できない | サービス未起動 | `docker compose ps` で litellm の状態を確認 |
 | Docker ビルドが遅い | キャッシュ無効化 | `docker compose build --no-cache` で完全再ビルド |
+| `bind: address already in use` (port 4000) | 他プロジェクトが同じポート使用中 | `.env` で `LITELLM_HOST_PORT=4001` に変更、または `--without-litellm` で起動 |
+| `bind: address already in use` (port 3000) | 他プロジェクトが LangFuse 起動中 | LangFuse は 1 プロジェクトのみで使用、または compose ファイルのポート編集 |
 
 ---
 
