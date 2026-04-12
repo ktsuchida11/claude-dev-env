@@ -160,7 +160,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
 RUN pip3 install --break-system-packages --upgrade pip && \
   pip3 install --break-system-packages uv && \
   COOLDOWN_DATE=$(date -u -d '7 days ago' +%Y-%m-%d 2>/dev/null || date -u -v-7d +%Y-%m-%d) && \
-  pip3 install --break-system-packages --uploaded-prior-to="$COOLDOWN_DATE" langfuse pip-audit
+  pip3 install --break-system-packages --uploaded-prior-to="$COOLDOWN_DATE" langfuse pip-audit playwright
 
 # --- Non-root user setup ---
 USER node
@@ -203,7 +203,13 @@ RUN npm install -g --ignore-scripts @playwright/mcp || echo "WARN: playwright-mc
 RUN npm install -g --ignore-scripts @modelcontextprotocol/server-sequential-thinking || echo "WARN: sequential-thinking install failed"
 
 # Install Playwright Chromium browser
-RUN npx playwright install chromium
+# Node.js 版（@playwright/mcp が使用）と Python 版（python -m playwright が使用）を両方インストール。
+# 各バージョンは /home/node/.cache/ms-playwright/chromium-<rev>/ に並存する。
+# プロジェクト側で異なるバージョンの playwright を使う場合は、
+# プロジェクトの venv 内で `playwright install chromium` を再実行すること
+# （既存バージョンはそのまま残るため副作用なし）。
+RUN npx playwright install chromium && \
+  python3 -m playwright install chromium
 
 # Install language servers for Serena
 RUN npm install -g --ignore-scripts typescript-language-server typescript pyright

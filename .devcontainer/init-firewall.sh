@@ -191,6 +191,10 @@ ALL_DOMAINS=(
     "openaipublic.blob.core.windows.net"
     "cloud.langfuse.com"
     "us.cloud.langfuse.com"
+    # Playwright Chromium ダウンロード用 CDN
+    # （プロジェクトごとに異なる playwright バージョンで Chromium を追加取得できるように）
+    "cdn.playwright.dev"
+    "playwright.azureedge.net"
 )
 
 is_critical_domain() {
