@@ -3,7 +3,8 @@ services:
     build:
       context: ./litellm
     ports:
-      - "4000:4000"
+      # ホスト側ポートは LITELLM_HOST_PORT で上書き可能（複数プロジェクト同時実行用）
+      - "${LITELLM_HOST_PORT:-4000}:4000"
     env_file:
       - path: .env
         required: false
