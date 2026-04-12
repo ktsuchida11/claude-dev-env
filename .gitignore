@@ -2,13 +2,20 @@
 .env
 .env.local
 .env.keys
+.env.enc
 *.decrypted
 *.tmp.env
 
 # === .env 暗号化関連 ===
-# .env.enc（暗号化済み）と .env.example はコミット OK
-!.env.enc
+# .env.example はテンプレートとしてコミット OK
+# .env.enc は個人の暗号化データのため配布リポジトリには含めない
+#   （各ユーザーが自身の age 鍵で .env → .env.enc を生成）
 !.env.example
+
+# === SOPS 設定 ===
+# .sops.yaml.example はテンプレートとしてコミット
+# .sops.yaml は個人の age 公開鍵を含むためユーザーローカル
+.sops.yaml
 
 # === ローカル設定 ===
 .DS_Store
