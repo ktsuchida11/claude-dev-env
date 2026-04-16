@@ -260,7 +260,7 @@ echo "sha256hashvalue..." >> ~/.security-ioc/malicious_hashes.txt
 
 ## 7. 既存の Lockdown 設定との関係
 
-Koji さんが既に導入している npm/uv/pip のロックダウン設定は **防御の第一線** です。
+既に導入している npm/uv/pip のロックダウン設定は **防御の第一線** です。
 このチェッカーはそれを **補完** します。
 
 ```

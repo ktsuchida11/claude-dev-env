@@ -3,8 +3,7 @@
 # Claude Code Security Audit Script for Linux
 # Version: 1.0.0
 # Date: 2026-04-11
-# Author: Koji / Sample合同会社
-#
+# Author: 
 # macOS 版 (claude-code-security-audit.sh) をベースに、
 # Linux 固有の 3 箇所のみ変更したラッパー。
 #
