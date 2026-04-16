@@ -68,7 +68,7 @@ section "2. Launch Agents / Daemons"
 
 # 既知ベンダーの plist プレフィックス（grep -qE のパターンとして使用）
 # 自分が使うアプリを追加して誤検出を減らしてください
-KNOWN_PREFIXES="com.apple.|com.google.|com.microsoft.|com.docker.|com.jetbrains.|org.mozilla.|com.spotify.|com.1password.|us.zoom.|com.zui."
+KNOWN_PREFIXES="com.apple.|com.google.|com.microsoft.|com.docker.|com.jetbrains.|org.mozilla.|com.spotify.|com.1password.|us.zoom.|com.sample."
 SUSPICIOUS_AGENTS=()
 
 for DIR in ~/Library/LaunchAgents /Library/LaunchAgents /Library/LaunchDaemons; do

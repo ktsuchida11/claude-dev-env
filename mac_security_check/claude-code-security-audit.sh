@@ -3,7 +3,6 @@
 # Claude Code Security Audit Script for macOS
 # Version: 1.0.0
 # Date: 2026-04-10
-# Author: Koji / Zui合同会社
 # 
 # Usage: bash claude-code-security-audit.sh [--output <path>]
 # ============================================================

@@ -90,16 +90,16 @@ abuse.ch 等から脅威インテリジェンスデータを取得します。
 ```bash
 # ユニットファイルの配置
 mkdir -p ~/.config/systemd/user
-cp linux_security_check/zui-*.service ~/.config/systemd/user/
-cp linux_security_check/zui-*.timer ~/.config/systemd/user/
+cp linux_security_check/sample-*.service ~/.config/systemd/user/
+cp linux_security_check/sample-*.timer ~/.config/systemd/user/
 
 # __HOME__ プレースホルダーの置換
-sed -i "s|__HOME__|$HOME|g" ~/.config/systemd/user/zui-*
+sed -i "s|__HOME__|$HOME|g" ~/.config/systemd/user/sample-*
 
 # 有効化
 systemctl --user daemon-reload
-systemctl --user enable --now zui-security-check.timer
-systemctl --user enable --now zui-threat-intel-update.timer
+systemctl --user enable --now sample-security-check.timer
+systemctl --user enable --now sample-threat-intel-update.timer
 
 # 確認
 systemctl --user list-timers

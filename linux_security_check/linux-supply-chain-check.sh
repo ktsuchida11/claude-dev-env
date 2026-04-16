@@ -115,8 +115,8 @@ if [ -d "$USER_SERVICES_DIR" ]; then
         echo "$USER_SERVICES" | while read -r SVC; do
             local SVC_NAME
             SVC_NAME=$(basename "$SVC")
-            # zui-* は自前のサービスなので既知
-            if echo "$SVC_NAME" | grep -qE "^zui-"; then
+            # sample-* は自前のサービスなので既知
+            if echo "$SVC_NAME" | grep -qE "^sample-"; then
                 ok "既知サービス: \`$SVC_NAME\`"
             else
                 warn "確認が必要なユーザーサービス: \`$SVC_NAME\`"

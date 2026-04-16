@@ -114,7 +114,7 @@ if [ "$MODE" = "--check" ]; then
     # 4. systemd タイマー
     echo -e "${CYAN}[4] systemd タイマー${NC}"
     SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
-    for timer in "zui-security-check" "zui-threat-intel-update"; do
+    for timer in "sample-security-check" "sample-threat-intel-update"; do
         if systemctl --user is-active "${timer}.timer" &>/dev/null 2>&1; then
             echo -e "  ${GREEN}有効${NC}: ${timer}.timer"
         elif [ -f "$SYSTEMD_USER_DIR/${timer}.timer" ]; then
@@ -260,24 +260,24 @@ register_systemd_unit() {
 
 if confirm; then
     # サービスとタイマーを配置
-    register_systemd_unit "$SCRIPT_DIR/zui-security-check.service"
-    register_systemd_unit "$SCRIPT_DIR/zui-security-check.timer"
+    register_systemd_unit "$SCRIPT_DIR/sample-security-check.service"
+    register_systemd_unit "$SCRIPT_DIR/sample-security-check.timer"
 
     if [ "$SKIP_IOC" = false ]; then
-        register_systemd_unit "$SCRIPT_DIR/zui-threat-intel-update.service"
-        register_systemd_unit "$SCRIPT_DIR/zui-threat-intel-update.timer"
+        register_systemd_unit "$SCRIPT_DIR/sample-threat-intel-update.service"
+        register_systemd_unit "$SCRIPT_DIR/sample-threat-intel-update.timer"
     fi
 
     # daemon-reload して有効化
     if systemctl --user daemon-reload 2>/dev/null; then
-        systemctl --user enable --now zui-security-check.timer 2>/dev/null && \
-            echo -e "  ${GREEN}zui-security-check.timer: 有効化完了${NC}" || \
-            echo -e "  ${YELLOW}zui-security-check.timer: 有効化に失敗（loginctl enable-linger が必要な場合があります）${NC}"
+        systemctl --user enable --now sample-security-check.timer 2>/dev/null && \
+            echo -e "  ${GREEN}sample-security-check.timer: 有効化完了${NC}" || \
+            echo -e "  ${YELLOW}sample-security-check.timer: 有効化に失敗（loginctl enable-linger が必要な場合があります）${NC}"
 
         if [ "$SKIP_IOC" = false ]; then
-            systemctl --user enable --now zui-threat-intel-update.timer 2>/dev/null && \
-                echo -e "  ${GREEN}zui-threat-intel-update.timer: 有効化完了${NC}" || \
-                echo -e "  ${YELLOW}zui-threat-intel-update.timer: 有効化に失敗${NC}"
+            systemctl --user enable --now sample-threat-intel-update.timer 2>/dev/null && \
+                echo -e "  ${GREEN}sample-threat-intel-update.timer: 有効化完了${NC}" || \
+                echo -e "  ${YELLOW}sample-threat-intel-update.timer: 有効化に失敗${NC}"
         fi
     else
         echo -e "  ${YELLOW}systemctl --user が利用できません（WSL2 の場合は cron を使用してください）${NC}"

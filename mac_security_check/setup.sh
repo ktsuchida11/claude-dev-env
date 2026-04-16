@@ -103,7 +103,7 @@ if [ "$MODE" = "--check" ] || [ "$MODE" = "-c" ]; then
 
   # 4. launchd ジョブ
   echo -e "${CYAN}[4] launchd ジョブ${NC}"
-  for plist in "com.zui.security-check" "com.zui.threat-intel-update"; do
+  for plist in "com.sample.security-check" "com.sample.threat-intel-update"; do
     if launchctl list 2>/dev/null | grep -q "$plist"; then
       echo -e "  ${GREEN}有効${NC}: $plist"
     elif [ -f "$HOME/Library/LaunchAgents/${plist}.plist" ]; then
@@ -236,8 +236,8 @@ register_plist() {
 }
 
 if confirm; then
-  register_plist "$SCRIPT_DIR/com.zui.security-check.plist"
-  register_plist "$SCRIPT_DIR/com.zui.threat-intel-update.plist"
+  register_plist "$SCRIPT_DIR/com.sample.security-check.plist"
+  register_plist "$SCRIPT_DIR/com.sample.threat-intel-update.plist"
 else
   echo -e "  ${YELLOW}スキップ${NC}"
 fi

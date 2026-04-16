@@ -162,17 +162,17 @@ claude-dev-env/
 │   ├── mac-supply-chain-check-v3-additions.sh  # 追加チェック（9項目）
 │   ├── threat-intel-updater.sh        # IOC データベース日次更新
 │   ├── block-sensitive-files.py       # 機密ファイルアクセスブロック Hook
-│   ├── com.zui.security-check.plist   # launchd: 週次チェック（月曜 9:00）
-│   ├── com.zui.threat-intel-update.plist  # launchd: 日次 IOC 更新（毎日 7:00）
+│   ├── com.sample.security-check.plist   # launchd: 週次チェック（月曜 9:00）
+│   ├── com.sample.threat-intel-update.plist  # launchd: 日次 IOC 更新（毎日 7:00）
 │   └── COMPLETE-SETUP-GUIDE.md        # 詳細セットアップガイド
 ├── linux_security_check/              # Linux (AL2023/WSL2) セキュリティツール群
 │   ├── setup.sh                       # Linux 統合セットアップ
 │   ├── linux-supply-chain-check.sh    # Linux セキュリティチェック
 │   ├── claude-code-security-audit-linux.sh  # Claude Code 監査（Linux 版）
-│   ├── zui-security-check.service     # systemd: 週次チェック
-│   ├── zui-security-check.timer       # systemd: 月曜 9:00
-│   ├── zui-threat-intel-update.service # systemd: 日次 IOC 更新
-│   ├── zui-threat-intel-update.timer  # systemd: 毎日 7:00
+│   ├── sample-security-check.service     # systemd: 週次チェック
+│   ├── sample-security-check.timer       # systemd: 月曜 9:00
+│   ├── sample-threat-intel-update.service # systemd: 日次 IOC 更新
+│   ├── sample-threat-intel-update.timer  # systemd: 毎日 7:00
 │   └── LINUX-SETUP-GUIDE.md          # Linux セットアップガイド
 ├── cooldown_management/               # クールダウン日付管理
 │   ├── cooldown-update.sh             # pip.conf の絶対日付を自動更新
