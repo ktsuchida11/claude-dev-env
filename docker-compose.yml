@@ -4,10 +4,15 @@ services:
       context: ./litellm
     ports:
       # ホスト側ポートは LITELLM_HOST_PORT で上書き可能（複数プロジェクト同時実行用）
-      - "${LITELLM_HOST_PORT:-4000}:4000"
+      # LAN 上の他ホストから到達できないよう 127.0.0.1 にバインドする
+      - "127.0.0.1:${LITELLM_HOST_PORT:-4000}:4000"
     env_file:
       - path: .env
         required: false
+    mem_limit: ${LITELLM_MEM_LIMIT:-1g}
+    memswap_limit: ${LITELLM_MEMSWAP_LIMIT:-1g}
+    cpus: ${LITELLM_CPUS:-1.0}
+    pids_limit: ${LITELLM_PIDS_LIMIT:-256}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
       interval: 10s
@@ -38,7 +43,10 @@ services:
       - NET_RAW
     security_opt:
       - seccomp=unconfined
-      - systempaths=unconfined
+    mem_limit: ${DEV_MEM_LIMIT:-8g}
+    memswap_limit: ${DEV_MEMSWAP_LIMIT:-8g}
+    cpus: ${DEV_CPUS:-4.0}
+    pids_limit: ${DEV_PIDS_LIMIT:-2048}
     healthcheck:
       test: ["CMD", "command", "-v", "claude"]
       interval: 10s
