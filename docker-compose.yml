@@ -13,6 +13,11 @@ services:
     memswap_limit: ${LITELLM_MEMSWAP_LIMIT:-1g}
     cpus: ${LITELLM_CPUS:-1.0}
     pids_limit: ${LITELLM_PIDS_LIMIT:-256}
+    # ルート FS を read-only 化し、runtime 改ざん面を削減。
+    # Python プロセスが必要とする書き込み先（一時ファイル等）は tmpfs で提供する。
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
       interval: 10s
