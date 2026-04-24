@@ -147,6 +147,7 @@
   "sandbox": {
     "enabled": true,
     "autoAllowBashIfSandboxed": true,
+    "failIfUnavailable": true,
     "excludedCommands": [
       "docker *",
       "gh *"
@@ -178,6 +179,9 @@
     },
     "network": {
       "allowedDomains": [
+        "finance.yahoo.com",
+        "query1.finance.yahoo.com",                                                                                                                   
+        "query2.finance.yahoo.com",
         "github.com",
         "*.github.com",
         "*.githubusercontent.com",

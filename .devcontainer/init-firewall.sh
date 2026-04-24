@@ -195,6 +195,9 @@ ALL_DOMAINS=(
     # （プロジェクトごとに異なる playwright バージョンで Chromium を追加取得できるように）
     "cdn.playwright.dev"
     "playwright.azureedge.net"
+    "finance.yahoo.com"
+    "query1.finance.yahoo.com"                                                                                                                   
+    "query2.finance.yahoo.com"
 )
 
 is_critical_domain() {
