@@ -4,10 +4,11 @@ services:
   # 直接マウントはコンテナエスケープの王道経路（--privileged で任意コンテナ起動可）
   # のため、許可 API を絞った経路に置き換えてホスト root 掌握リスクを縮小する。
   docker-proxy:
-    # TODO: 初回 pull 後に SHA256 digest で pin する（litellm と同様のサプライチェーン対策）
-    # docker pull tecnativa/docker-socket-proxy:0.4.2 && \
-    #   docker inspect --format='{{index .RepoDigests 0}}' tecnativa/docker-socket-proxy:0.3.0
-    image: tecnativa/docker-socket-proxy:v0.4.2
+    # SHA256 digest で pin（litellm と同様のサプライチェーン対策）
+    # 更新手順:
+    #   docker pull tecnativa/docker-socket-proxy:v0.4.2 && \
+    #     docker inspect --format='{{index .RepoDigests 0}}' tecnativa/docker-socket-proxy:v0.4.2
+    image: tecnativa/docker-socket-proxy:v0.4.2@sha256:1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
     restart: unless-stopped
     read_only: true
     tmpfs:

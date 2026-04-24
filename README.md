@@ -579,7 +579,13 @@ cd my-project
 
 ### Docker-in-Docker
 
-dev コンテナからホストの Docker ソケットがマウントされているため、コンテナ内で `docker` / `docker compose` コマンドが利用可能。workspace 内のプロジェクトが独自の `docker-compose.yml` を持つ場合、コンテナ内から直接起動できる。
+dev コンテナ内で `docker` / `docker compose` コマンドが利用可能。workspace 内のプロジェクトが独自の `docker-compose.yml` を持つ場合、コンテナ内から直接起動できる。
+
+**仕組み**: `/var/run/docker.sock` を直接マウントする代わりに、`tecnativa/docker-socket-proxy` を経由してホストの Docker API にアクセスする (`DOCKER_HOST=tcp://docker-proxy:2375`)。proxy は必要最小限の API のみを許可し、コンテナエスケープの王道経路（`docker run --privileged -v /:/host ...` 等）を構造的に遮断する。
+
+**許可されている API** (dev の用途で必要なもの): `CONTAINERS` / `IMAGES` / `NETWORKS` / `VOLUMES` / `SERVICES` / `TASKS` / `EXEC` / `BUILD` / `INFO` / `PING` / `VERSION` / `POST`
+
+**無効化されている API**: `AUTH` / `SECRETS` / `SWARM` / `SYSTEM`(prune) / `CONFIGS` / `PLUGINS` / `NODES` / `DISTRIBUTION`
 
 ## サプライチェーン攻撃対策
 

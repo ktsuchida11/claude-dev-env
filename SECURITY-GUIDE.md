@@ -92,11 +92,18 @@ Claude Codeは強力なツールだが、ファイル操作・コマンド実行
 | ~/.aws/credentials の読み取り | コンテナ内に存在しない |
 | 他のリポジトリへのアクセス | /workspace のみマウント |
 | ホストのプロセスへの影響 | コンテナのプロセス空間は隔離 |
+| **Docker API 経由のコンテナエスケープ** | **docker-socket-proxy で API 粒度を制限**（下記参照） |
 
 **ポイント**:
 - Claude Codeがどんなコマンドを実行しても、ホストPCには影響しない
 - これが「最終的な安全ネット」として機能する
 - APIキー（`.env`）はコンテナ内にのみ存在し、ホスト環境から分離
+
+**Docker Socket Proxy**: dev コンテナから `docker` / `docker compose` を使用する際、`/var/run/docker.sock` を直接マウントする代わりに `tecnativa/docker-socket-proxy` を経由する。直接マウントは `docker run --privileged -v /:/host ...` 等で **ホスト root 掌握可能** な王道経路となるため、proxy で許可 API を最小化して遮断する。
+
+- 許可: `CONTAINERS` / `IMAGES` / `NETWORKS` / `VOLUMES` / `SERVICES` / `TASKS` / `EXEC` / `BUILD` / `INFO` / `PING` / `VERSION` / `POST`
+- 無効: `AUTH` / `SECRETS` / `SWARM` / `SYSTEM`(prune) / `CONFIGS` / `PLUGINS` / `NODES` / `DISTRIBUTION`
+- proxy 自身も `read_only: true` + リソース制限で強化、socket は `:ro` で接続
 
 ### 第2層: ファイアウォール（通信制御）
 
