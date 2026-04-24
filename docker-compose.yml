@@ -1,4 +1,41 @@
 services:
+  # Docker Socket Proxy: dev から /var/run/docker.sock を直接マウントする代わりに、
+  # tecnativa/docker-socket-proxy を介して必要最小限の API だけを公開する。
+  # 直接マウントはコンテナエスケープの王道経路（--privileged で任意コンテナ起動可）
+  # のため、許可 API を絞った経路に置き換えてホスト root 掌握リスクを縮小する。
+  docker-proxy:
+    # TODO: 初回 pull 後に SHA256 digest で pin する（litellm と同様のサプライチェーン対策）
+    # docker pull tecnativa/docker-socket-proxy:0.4.2 && \
+    #   docker inspect --format='{{index .RepoDigests 0}}' tecnativa/docker-socket-proxy:0.3.0
+    image: tecnativa/docker-socket-proxy:v0.4.2
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run
+      - /tmp:size=8m,mode=1777
+    environment:
+      # 許可 API（dev の用途: docker compose / build / exec / ps など）
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      SERVICES: 1
+      TASKS: 1
+      EXEC: 1
+      BUILD: 1
+      INFO: 1
+      PING: 1
+      VERSION: 1
+      POST: 1
+      # 危険な API はデフォルト 0 のまま無効化
+      # AUTH, SECRETS, SWARM, SYSTEM(prune), CONFIGS, PLUGINS, NODES, DISTRIBUTION, SESSION
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: 0.2
+    pids_limit: 64
+
   litellm:
     build:
       context: ./litellm
@@ -62,8 +99,12 @@ services:
     depends_on:
       litellm:
         condition: service_healthy
+      docker-proxy:
+        condition: service_started
     environment:
       - LITELLM_BASE_URL=http://litellm:4000
+      # docker / docker compose は docker-proxy 経由で実行（socket 直接マウントを廃止）
+      - DOCKER_HOST=tcp://docker-proxy:2375
       - LITELLM_AUTH_TOKEN=${LITELLM_MASTER_KEY}
       - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
       - NODE_OPTIONS=--max-old-space-size=4096
@@ -102,7 +143,6 @@ services:
       - ./cooldown_management:/workspace/cooldown_management:ro
       - claude-config:/home/node/.claude
       - bash-history:/commandhistory
-      - /var/run/docker.sock:/var/run/docker.sock
     user: node
     working_dir: /workspace
     stdin_open: true
