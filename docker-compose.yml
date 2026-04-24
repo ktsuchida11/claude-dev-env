@@ -41,8 +41,9 @@ services:
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    security_opt:
-      - seccomp=unconfined
+    # seccomp は Docker デフォルトを使用（unconfined は撤回）
+    # NET_ADMIN / NET_RAW が付与されていれば iptables/ipset はデフォルト seccomp で動作する
+    # 初期化に失敗する場合は ENABLE_FIREWALL=false で切り分け可能
     mem_limit: ${DEV_MEM_LIMIT:-8g}
     memswap_limit: ${DEV_MEMSWAP_LIMIT:-8g}
     cpus: ${DEV_CPUS:-4.0}
