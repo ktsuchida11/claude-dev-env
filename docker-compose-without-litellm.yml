@@ -1,4 +1,34 @@
 services:
+  # Docker Socket Proxy: dev から /var/run/docker.sock を直接マウントする代わりに、
+  # tecnativa/docker-socket-proxy を介して必要最小限の API だけを公開する。
+  # 詳細は docker-compose.yml の同名サービス参照。
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:v0.4.2
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run
+      - /tmp:size=8m,mode=1777
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      SERVICES: 1
+      TASKS: 1
+      EXEC: 1
+      BUILD: 1
+      INFO: 1
+      PING: 1
+      VERSION: 1
+      POST: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: 0.2
+    pids_limit: 64
+
   dev:
     build:
       context: ./.devcontainer
@@ -23,6 +53,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    depends_on:
+      docker-proxy:
+        condition: service_started
     environment:
       - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
       - NODE_OPTIONS=--max-old-space-size=4096
@@ -30,6 +63,8 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - ENABLE_FIREWALL=${ENABLE_FIREWALL:-true}
       - HOST_WORKSPACE_PATH=${PWD}/workspace
+      # docker / docker compose は docker-proxy 経由で実行（socket 直接マウントを廃止）
+      - DOCKER_HOST=tcp://docker-proxy:2375
       # .env 暗号化: age 秘密鍵は tmpfs 経由で渡す（環境変数に残さない）
       # start-devcontainer.sh が docker cp で /run/secrets/age-key に注入 → 復号後に削除
       # Proxy settings (uncomment if behind a corporate proxy)
@@ -47,7 +82,6 @@ services:
       - ./cooldown_management:/workspace/cooldown_management:ro
       - claude-config:/home/node/.claude
       - bash-history:/commandhistory
-      - /var/run/docker.sock:/var/run/docker.sock
     user: node
     working_dir: /workspace
     stdin_open: true
