@@ -70,9 +70,22 @@ if echo "$COMMAND" | grep -qE '(printenv|env)\s*\|.*(curl|wget|nc|python|node)';
   exit 2
 fi
 
-# chmod 777 (overly permissive)
-if echo "$COMMAND" | grep -qE 'chmod\s+777'; then
-  echo '{"decision": "block", "reason": "Blocked: chmod 777 is not allowed"}' >&2
+# gh CLI の危険サブコマンド
+# - gh api: 認証済みトークンによる任意 HTTP（repo 横断書込の濫用経路）
+# - gh auth token: トークン平文出力（ログ・他プロセスへの漏洩）
+# - gh auth login/logout/refresh: 認証状態の操作
+# - gh secret / variable: repo secret/variable の読取・変更
+# - gh workflow run/enable/disable: CI 任意起動・状態変更（CI 経由 RCE）
+# - gh ssh-key / gpg-key: 永続化鍵の追加
+if echo "$COMMAND" | grep -qE '\bgh\s+(api|secret|variable|ssh-key|gpg-key)\b|\bgh\s+auth\s+(token|login|logout|refresh)\b|\bgh\s+workflow\s+(run|enable|disable)\b'; then
+  echo '{"decision": "block", "reason": "Blocked: dangerous gh subcommand (api / auth token / secret / variable / workflow run / ssh-key / gpg-key)"}' >&2
+  exit 2
+fi
+
+# chmod: world-writable / setuid (u+s, 4xxx) / setgid (g+s, 2xxx) / sticky+SUID+SGID (6xxx) / -R 再帰
+# シンボリック (+s) も数値 (4755 等) も両対応。setuid バイナリ作成は権限昇格の直接経路
+if echo "$COMMAND" | grep -qE 'chmod\s+([ug]?\+s|777|666|-R\s+(777|666)|[2467][0-7]{3})(\s|$)'; then
+  echo '{"decision": "block", "reason": "Blocked: chmod with overly permissive or setuid/setgid mode is not allowed"}' >&2
   exit 2
 fi
 
