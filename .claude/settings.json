@@ -1,6 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-
   "permissions": {
     "allow": [
       "Read",
@@ -19,7 +18,18 @@
       "Bash(pip *)",
       "Bash(gradle *)",
       "Bash(mvn *)",
-      "Bash(gh *)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh repo view *)",
+      "Bash(gh repo list *)",
+      "Bash(gh repo clone *)",
+      "Bash(gh run *)",
+      "Bash(gh release view *)",
+      "Bash(gh release list *)",
+      "Bash(gh auth status)",
+      "Bash(gh label *)",
+      "Bash(gh search *)",
+      "Bash(gh browse *)",
       "Bash(make *)",
       "Bash(docker compose *)",
       "Bash(ls *)",
@@ -35,7 +45,6 @@
       "Bash(cp *)",
       "Bash(mv *)",
       "Bash(touch *)",
-      "Bash(chmod *)",
       "Bash(echo *)",
       "Bash(cd *)",
       "Bash(pwd)",
@@ -66,6 +75,18 @@
       "Bash(* sed -i * settings.json*)",
       "Bash(* sed -i * .claude.json*)",
       "Bash(* sed -i * .mcp.json*)",
+      "Bash(gh api *)",
+      "Bash(gh auth token*)",
+      "Bash(gh auth login*)",
+      "Bash(gh auth logout*)",
+      "Bash(gh auth refresh*)",
+      "Bash(gh secret *)",
+      "Bash(gh variable *)",
+      "Bash(gh workflow run*)",
+      "Bash(gh workflow enable*)",
+      "Bash(gh workflow disable*)",
+      "Bash(gh ssh-key *)",
+      "Bash(gh gpg-key *)",
       "Bash(curl *)",
       "Bash(wget *)",
       "Bash(ssh *)",
@@ -76,6 +97,15 @@
       "Bash(ftp *)",
       "Bash(sudo *)",
       "Bash(chmod 777 *)",
+      "Bash(chmod 666 *)",
+      "Bash(chmod -R 777 *)",
+      "Bash(chmod -R 666 *)",
+      "Bash(chmod u+s *)",
+      "Bash(chmod g+s *)",
+      "Bash(chmod +s *)",
+      "Bash(chmod 4* *)",
+      "Bash(chmod 2* *)",
+      "Bash(chmod 6* *)",
       "Bash(eval *)",
       "Bash(exec *)",
       "Bash(nohup *)",
@@ -88,6 +118,12 @@
       "Write(.env.*)",
       "Edit(.env)",
       "Edit(.env.*)",
+      "Write(.claude/hooks/**)",
+      "Edit(.claude/hooks/**)",
+      "Write(.claude/settings.json)",
+      "Edit(.claude/settings.json)",
+      "Write(.claude/settings.local.json)",
+      "Edit(.claude/settings.local.json)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
       "Read(~/.gnupg/**)",
@@ -108,7 +144,7 @@
     ],
     "filesystem": {
       "allowWrite": [
-        "/Users/tsuchitakouji/pg_work_space/mra_chat_01/claude-dev-env/workspace",
+        "/Users/tsuchitakouji/pg_work_space/claude_test/cldev-book/workspace",
         "~/.npm",
         "~/.cache",
         "~/.local",
@@ -117,8 +153,10 @@
         "/tmp"
       ],
       "denyWrite": [
-        "/Users/tsuchitakouji/pg_work_space/mra_chat_01/claude-dev-env/.claude/settings.json",
-        "/Users/tsuchitakouji/pg_work_space/mra_chat_01/claude-dev-env/.claude/settings.local.json",
+        "/Users/tsuchitakouji/pg_work_space/claude_test/cldev-book/.claude/settings.json",
+        "/Users/tsuchitakouji/pg_work_space/claude_test/cldev-book/.claude/settings.local.json",
+        "/Users/tsuchitakouji/pg_work_space/claude_test/cldev-book/.claude/hooks",
+        "/Users/tsuchitakouji/pg_work_space/claude_test/cldev-book/.claude/skills",
         "/etc"
       ],
       "denyRead": [
@@ -153,7 +191,7 @@
         "us.cloud.langfuse.com"
       ],
       "allowLocalBinding": true,
-      "allowAllUnixSockets": true
+      "allowAllUnixSockets": false
     }
   },
 
@@ -240,6 +278,6 @@
 
   "env": {
     "CLAUDE_CODE_ENABLE_TELEMETRY": "0",
-    "PIP_CONFIG_FILE": "/Users/tsuchitakouji/pg_work_space/mra_chat_01/claude-dev-env/workspace/.pip.conf"
+    "PIP_CONFIG_FILE": "/Users/tsuchitakouji/pg_work_space/claude_test/cldev-book/workspace/.pip.conf"
   }
 }
