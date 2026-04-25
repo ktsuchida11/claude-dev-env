@@ -55,11 +55,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # --- SOPS + age（.env 暗号化・復号） ---
-ARG SOPS_VERSION=3.9.4
+# age は GitHub release から直接取得する（dl.filippo.io の単一障害点を避けるため）
+ARG SOPS_VERSION=3.12.2
+ARG AGE_VERSION=1.2.1
 RUN ARCH=$(dpkg --print-architecture) && \
   curl -fsSL "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.${ARCH}" \
   -o /usr/local/bin/sops && chmod +x /usr/local/bin/sops && \
-  curl -fsSL "https://dl.filippo.io/age/v1.2.1?for=linux/${ARCH}" | tar -xz --strip-components=1 -C /usr/local/bin/ && \
+  curl -fsSL "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-${ARCH}.tar.gz" \
+  | tar -xz --strip-components=1 -C /usr/local/bin/ && \
   chmod +x /usr/local/bin/age /usr/local/bin/age-keygen
 
 # --- Layer 2: ネットワーク・ファイアウォール ---
