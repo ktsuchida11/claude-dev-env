@@ -137,5 +137,32 @@ if echo "$COMMAND" | grep -qiE 'sandbox.*enabled.*false|"enabled"\s*:\s*false.*s
   exit 2
 fi
 
+# --- python / node 経由の egress 検出（情報提供レベル）---
+# 主防御は init-firewall.sh の egress 許可リスト（24 ドメインのみ通信可）。
+# このチェックは「気づき」を提供するもので、firewall を回避することは不可能。
+# 開発で正当に使う場面（Anthropic API、PyPI アクセス等）が多いため警告のみが既定。
+# 強制ブロックしたい場合は STRICT_EGRESS_BLOCK=true を設定する。
+EGRESS_HIT=""
+EGRESS_REASON=""
+
+if echo "$COMMAND" | grep -qE '\b(python|python3)\s+-c\b.*\b(urllib|httplib|http\.client|requests|socket|aiohttp|urllib3|httpx)\b'; then
+  EGRESS_HIT="true"
+  EGRESS_REASON="Python ネットワークモジュール (urllib/http.client/requests/socket/aiohttp/urllib3/httpx) の直接実行を検出"
+fi
+
+if echo "$COMMAND" | grep -qE "\bnode\s+-[ep]\b.*(require\(['\"](https?|net|http2)['\"]\)|\bfetch\s*\()"; then
+  EGRESS_HIT="true"
+  EGRESS_REASON="Node 標準モジュール (http/https/net/http2/fetch) の直接実行を検出"
+fi
+
+if [ -n "$EGRESS_HIT" ]; then
+  if [ "${STRICT_EGRESS_BLOCK:-false}" = "true" ]; then
+    echo "{\"decision\": \"block\", \"reason\": \"Blocked (STRICT_EGRESS_BLOCK=true): ${EGRESS_REASON}. Set STRICT_EGRESS_BLOCK=false to allow with warning only.\"}" >&2
+    exit 2
+  else
+    echo "[block-dangerous] WARN: ${EGRESS_REASON}. firewall が許可ドメインのみ通すので主防御は維持されますが、意図した処理か確認してください。STRICT_EGRESS_BLOCK=true でブロック動作に切替可能。" >&2
+  fi
+fi
+
 # All checks passed
 exit 0

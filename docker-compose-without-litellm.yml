@@ -66,6 +66,8 @@ services:
       - ENABLE_FIREWALL=${ENABLE_FIREWALL:-true}
       # Dockerfile cooldown PreToolUse block (opt-in, default false = warning only)
       - ENABLE_DOCKERFILE_COOLDOWN_BLOCK=${ENABLE_DOCKERFILE_COOLDOWN_BLOCK:-false}
+      # python -c / node -e 経由 egress を強制 block (opt-in, default false = warning only)
+      - STRICT_EGRESS_BLOCK=${STRICT_EGRESS_BLOCK:-false}
       - HOST_WORKSPACE_PATH=${PWD}/workspace
       # docker / docker compose は docker-proxy 経由で実行（socket 直接マウントを廃止）
       - DOCKER_HOST=tcp://docker-proxy:2375
