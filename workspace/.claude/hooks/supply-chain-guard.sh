@@ -3,12 +3,13 @@
 # Exit 0 = allow, Exit 2 = block
 #
 # 4 層チェック:
-#   1. パッケージインストールコマンドの検出
-#   2. typosquatting 検知（人気パッケージとの類似度）
+#   1. lockfile / hash mode 確認（再現性確保、本ガードの早期実行）
+#   2. パッケージインストールコマンドの検出
 #   3. 悪意パターン検出（危険なキーワード）
-#   4. （将来）lockfile 存在確認、クールダウン設定確認
+#   4. typosquatting 検知（人気パッケージとの類似度）
 #
 # 無効化: ENABLE_SUPPLY_CHAIN_GUARD=false
+# lockfile チェックのみ無効化: SKIP_LOCKFILE_CHECK=true
 
 set -uo pipefail
 
@@ -23,6 +24,69 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 
 if [ -z "$COMMAND" ]; then
   exit 0
+fi
+
+
+# === lockfile / hash mode チェック ===
+# transitive 依存の再現性が無いと、毎回最新版が取得され攻撃の入り口となる。
+# パッケージ名抽出より前に走らせるのは、`npm install`（引数なし）や `uv sync`
+# のように specific package 引数を持たないコマンドも対象に含めるため。
+if [ "${SKIP_LOCKFILE_CHECK:-false}" != "true" ]; then
+  CHECK_DIR="${PWD:-/workspace}"
+
+  block_lockfile() {
+    local mgr="$1" required="$2" hint="$3"
+    echo "{\"decision\": \"block\", \"reason\": \"Blocked: ${mgr} requires ${required} for reproducible install. ${hint}\"}" >&2
+    exit 2
+  }
+
+  warn_hash_mode() {
+    local req_file="$1"
+    if [ -f "$req_file" ]; then
+      if ! grep -qE '\-\-require-hashes|\-\-hash=' "$req_file"; then
+        echo "[supply-chain-guard] WARN: ${req_file} has no --require-hashes / --hash= entries. Hash pinning is recommended for reproducibility." >&2
+      fi
+    fi
+  }
+
+  # npm: install / i / add は lockfile 必須、ci は素通し
+  if echo "$COMMAND" | grep -qE '^\s*npm\s+ci(\b|$)'; then
+    : # npm ci 自体が lockfile 必須なので OK
+  elif echo "$COMMAND" | grep -qE '^\s*npm\s+(install|i|add)(\b|$)'; then
+    if [ ! -f "$CHECK_DIR/package-lock.json" ] && [ ! -f "$CHECK_DIR/npm-shrinkwrap.json" ]; then
+      block_lockfile "npm" "package-lock.json" \
+        "Run 'npm install --package-lock-only' to bootstrap, or use 'npm ci' if a lockfile exists."
+    fi
+  fi
+
+  # uv: add / sync は uv.lock 必須
+  if echo "$COMMAND" | grep -qE '^\s*uv\s+(add|sync)(\b|$)'; then
+    if [ ! -f "$CHECK_DIR/uv.lock" ]; then
+      block_lockfile "uv" "uv.lock" \
+        "Run 'uv lock' to create the lockfile first."
+    fi
+  fi
+
+  # uv pip install: -r requirements は hash mode 警告、単体パッケージは uv.lock 必須
+  if echo "$COMMAND" | grep -qE '^\s*uv\s+pip\s+install(\b|$)'; then
+    REQ_FILE=$(echo "$COMMAND" | grep -oE '\-r\s+\S+' | head -1 | awk '{print $2}')
+    if [ -n "$REQ_FILE" ]; then
+      warn_hash_mode "$REQ_FILE"
+    else
+      if [ ! -f "$CHECK_DIR/uv.lock" ]; then
+        block_lockfile "uv pip install" "uv.lock" \
+          "Use 'uv add <pkg>' inside a uv-managed project, or pass '-r requirements.txt' with --require-hashes."
+      fi
+    fi
+  fi
+
+  # pip install: -r requirements の場合のみ hash mode 警告（単体パッケージは lockfile 概念なし）
+  if echo "$COMMAND" | grep -qE '^\s*pip3?\s+install(\b|$)'; then
+    REQ_FILE=$(echo "$COMMAND" | grep -oE '\-r\s+\S+' | head -1 | awk '{print $2}')
+    if [ -n "$REQ_FILE" ]; then
+      warn_hash_mode "$REQ_FILE"
+    fi
+  fi
 fi
 
 # --- パッケージインストールコマンドの検出 ---
