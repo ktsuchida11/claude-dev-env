@@ -720,6 +720,20 @@ ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true
 （npm `--ignore-scripts` / `--min-release-age`、pip `--uploaded-prior-to`、uv `--exclude-newer` の不在）が
 あれば `exit 2` でブロックする。`[INFO]` レベル（npm/pip 自体のアップグレード推奨）はブロックしない。
 
+### npx の運用
+
+`npx <package>` は npm レジストリ上の任意パッケージを 1 行で実行できるためサプライチェーン攻撃の起点になりうる。
+本環境では `Bash(npx *)` を allow から外しており、`npx ...` を実行する際は **Claude Code の確認プロンプト** が表示される。
+
+確認プロンプトと並行して `supply-chain-guard.sh` が背景で動作し、以下を検査する:
+
+- typosquatting 検知（人気パッケージとのレーベンシュタイン距離）
+- 悪意パターン検知（`hack` `backdoor` `keylog` 等のキーワード）
+
+検査で問題があれば `exit 2` でブロックされる（`npx expresss`、`npx hack-tool` など）。
+よく使う `npx prettier`、`npx tsc`、`npx @playwright/mcp` は通常通り承認可能。引数の組み合わせは
+`-y` `-p <pkg>` `--package=<pkg>` `<pkg>@<version>` `@scope/<pkg>` に対応する。
+
 ## セキュリティテスト
 
 本環境のセキュリティ対策が正しく機能しているかを検証するためのテストを用意している。
