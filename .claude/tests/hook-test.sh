@@ -204,6 +204,9 @@ section "2" "supply-chain-guard.sh — サプライチェーンガード"
 
 # 環境変数を一時的に設定
 export ENABLE_SUPPLY_CHAIN_GUARD=true
+# 以降のセクションは typosquatting / 悪意パターン検出のみを検証するため
+# lockfile チェックを無効化する。lockfile チェック自体は後段の専用セクションで検証。
+export SKIP_LOCKFILE_CHECK=true
 
 echo -e "  ${YELLOW}--- ブロックされるべきコマンド（typosquatting）---${NC}"
 
@@ -272,6 +275,114 @@ test_hook "$GUARD_HOOK" "npm install expresss" 0 \
   "typosquatting: ENABLE_SUPPLY_CHAIN_GUARD=false で許可"
 
 export ENABLE_SUPPLY_CHAIN_GUARD=true
+# lockfile チェック専用セクションでは SKIP_LOCKFILE_CHECK を解除して有効化
+unset SKIP_LOCKFILE_CHECK
+
+echo ""
+echo -e "  ${YELLOW}--- lockfile / hash mode チェック ---${NC}"
+
+LOCKFILE_TEST_DIR="${TMPDIR:-/tmp}/lockfile-hook-test-$$"
+mkdir -p "$LOCKFILE_TEST_DIR/no-lock"
+mkdir -p "$LOCKFILE_TEST_DIR/with-npm" && touch "$LOCKFILE_TEST_DIR/with-npm/package-lock.json"
+mkdir -p "$LOCKFILE_TEST_DIR/with-shrink" && touch "$LOCKFILE_TEST_DIR/with-shrink/npm-shrinkwrap.json"
+mkdir -p "$LOCKFILE_TEST_DIR/with-uv" && touch "$LOCKFILE_TEST_DIR/with-uv/uv.lock"
+
+mkdir -p "$LOCKFILE_TEST_DIR/req-no-hash"
+echo 'requests==2.31.0' > "$LOCKFILE_TEST_DIR/req-no-hash/requirements.txt"
+
+mkdir -p "$LOCKFILE_TEST_DIR/req-with-hash"
+cat > "$LOCKFILE_TEST_DIR/req-with-hash/requirements.txt" <<'REQ_EOF'
+requests==2.31.0 \
+    --hash=sha256:abc123def456
+REQ_EOF
+
+# 指定 cwd で hook を呼び出すヘルパー
+test_hook_in_dir() {
+  local hook_path="$1"
+  local cwd="$2"
+  local command="$3"
+  local expected_exit="$4"
+  local description="$5"
+
+  local input
+  input=$(jq -n --arg cmd "$command" '{"tool_input": {"command": $cmd}}')
+
+  local exit_code=0
+  ( cd "$cwd" && echo "$input" | bash "$hook_path" >/dev/null 2>/dev/null ) || exit_code=$?
+
+  if [ "$exit_code" -eq "$expected_exit" ]; then
+    if [ "$expected_exit" -eq 2 ]; then
+      pass "BLOCK: $description"
+    else
+      pass "ALLOW: $description"
+    fi
+  else
+    if [ "$expected_exit" -eq 2 ]; then
+      fail "BLOCK 期待だが ALLOW された: $description (exit=$exit_code)"
+    else
+      fail "ALLOW 期待だが BLOCK された: $description (exit=$exit_code)"
+    fi
+  fi
+}
+
+# npm
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/no-lock" "npm install express" 2 \
+  "npm install <pkg>: package-lock.json 不在 → BLOCK"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/with-npm" "npm install express" 0 \
+  "npm install <pkg>: package-lock.json あり → ALLOW"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/with-shrink" "npm install express" 0 \
+  "npm install <pkg>: npm-shrinkwrap.json でも代替可"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/no-lock" "npm i express" 2 \
+  "npm i 短縮形: lockfile 不在 → BLOCK"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/no-lock" "npm install" 2 \
+  "npm install (引数なし): lockfile 不在 → BLOCK"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/no-lock" "npm ci" 0 \
+  "npm ci: lockfile 不要で素通し（コマンド自体が lockfile 必須）"
+
+# uv
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/no-lock" "uv add fastapi" 2 \
+  "uv add: uv.lock 不在 → BLOCK"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/with-uv" "uv add fastapi" 0 \
+  "uv add: uv.lock あり → ALLOW"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/no-lock" "uv sync" 2 \
+  "uv sync: uv.lock 不在 → BLOCK"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/with-uv" "uv sync" 0 \
+  "uv sync: uv.lock あり → ALLOW"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/no-lock" "uv pip install httpx" 2 \
+  "uv pip install <pkg>: uv.lock 不在 → BLOCK"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/with-uv" "uv pip install httpx" 0 \
+  "uv pip install <pkg>: uv.lock あり → ALLOW"
+
+# pip / uv pip -r requirements: 警告のみ (exit 0)
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/req-no-hash" "pip install -r requirements.txt" 0 \
+  "pip install -r (hash 無): exit 0 で警告のみ"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/req-with-hash" "pip install -r requirements.txt" 0 \
+  "pip install -r (hash 有): exit 0"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/no-lock" "pip install requests" 0 \
+  "pip install <pkg>: 単体は lockfile 概念なし → ALLOW"
+
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/req-no-hash" "uv pip install -r requirements.txt" 0 \
+  "uv pip install -r (hash 無): exit 0 で警告のみ（uv.lock 不要）"
+
+# 無効化スイッチ
+export SKIP_LOCKFILE_CHECK=true
+test_hook_in_dir "$GUARD_HOOK" "$LOCKFILE_TEST_DIR/no-lock" "npm install express" 0 \
+  "SKIP_LOCKFILE_CHECK=true: lockfile チェックを skip"
+unset SKIP_LOCKFILE_CHECK
+
+rm -rf "$LOCKFILE_TEST_DIR"
 
 # =============================================================================
 # 3. gha-security-check.sh テスト
