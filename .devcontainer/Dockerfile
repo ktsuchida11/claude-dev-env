@@ -203,8 +203,11 @@ COPY --chmod=755 install-claude.sh /usr/local/bin/install-claude.sh
 RUN cd /tmp && /usr/local/bin/install-claude.sh
 
 # --- MCP server npm packages (個別インストールで1つの失敗が他に影響しない) ---
-RUN npm install -g --ignore-scripts @upstash/context7-mcp || echo "WARN: context7-mcp install failed"
-RUN npm install -g --ignore-scripts @playwright/mcp || echo "WARN: playwright-mcp install failed"
+# バージョンは mcp-servers.json と必ず揃える。更新時は両方一緒に変更すること。
+ARG CONTEXT7_MCP_VERSION=2.1.8
+ARG PLAYWRIGHT_MCP_VERSION=0.0.70
+RUN npm install -g --ignore-scripts @upstash/context7-mcp@${CONTEXT7_MCP_VERSION} || echo "WARN: context7-mcp install failed"
+RUN npm install -g --ignore-scripts @playwright/mcp@${PLAYWRIGHT_MCP_VERSION} || echo "WARN: playwright-mcp install failed"
 
 # Install Playwright Chromium browser
 # Node.js 版（@playwright/mcp が使用）と Python 版（python -m playwright が使用）を両方インストール。
