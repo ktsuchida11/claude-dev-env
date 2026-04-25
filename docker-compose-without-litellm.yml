@@ -38,6 +38,7 @@ services:
         CLAUDE_CODE_VERSION: latest
         GIT_DELTA_VERSION: "0.18.2"
         ZSH_IN_DOCKER_VERSION: "1.2.0"
+        ENABLE_JAVA: "${ENABLE_JAVA:-false}"
         # HTTP_PROXY: ${HTTP_PROXY:-}
         # HTTPS_PROXY: ${HTTPS_PROXY:-}
         # NO_PROXY: ${NO_PROXY:-}

@@ -55,6 +55,8 @@
 | Python                  | 3.12             | uv                   | Ruff     | Ruff format |
 | Java                    | JDK 21 (Temurin) | Maven / Gradle       | -        | -           |
 
+> Java はビルド高速化のためデフォルト無効。`.env` で `ENABLE_JAVA=true` を設定したコンテナでのみ JDK / Maven / Gradle / jdtls がインストールされる。
+
 ### MCP サーバー（利用可能）
 
 - **Context7** — ライブラリのドキュメント・コード例をリアルタイム検索

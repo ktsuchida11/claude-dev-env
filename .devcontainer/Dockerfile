@@ -90,7 +90,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # --- Java environment (optional, controlled by ENABLE_JAVA build arg) ---
-ARG ENABLE_JAVA=true
+# Java を使わないプロジェクトのビルドを高速化するためデフォルトは無効。
+# 有効化するには docker compose build --build-arg ENABLE_JAVA=true もしくは
+# .env で ENABLE_JAVA=true を設定する。
+ARG ENABLE_JAVA=false
 
 # Install Java (Eclipse Temurin JDK 21)
 RUN if [ "$ENABLE_JAVA" = "true" ]; then \
