@@ -50,20 +50,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3 \
   python3-pip \
   python3-venv \
+  age \
   ca-certificates \
   curl \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# --- SOPS + age（.env 暗号化・復号） ---
-# age は GitHub release から直接取得する（dl.filippo.io の単一障害点を避けるため）
+# --- SOPS（.env 暗号化・復号バックエンド） ---
+# SOPS は CNCF（旧 Mozilla）の getsops/sops 公式バイナリを GitHub release から取得
+# age 本体は distro パッケージで導入済み（Debian Bookworm の age 1.1.1、Layer 1 参照）
 ARG SOPS_VERSION=3.12.2
-ARG AGE_VERSION=1.2.1
 RUN ARCH=$(dpkg --print-architecture) && \
   curl -fsSL "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.${ARCH}" \
-  -o /usr/local/bin/sops && chmod +x /usr/local/bin/sops && \
-  curl -fsSL "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-${ARCH}.tar.gz" \
-  | tar -xz --strip-components=1 -C /usr/local/bin/ && \
-  chmod +x /usr/local/bin/age /usr/local/bin/age-keygen
+  -o /usr/local/bin/sops && chmod +x /usr/local/bin/sops
 
 # --- Layer 2: ネットワーク・ファイアウォール ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
