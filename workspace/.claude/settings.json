@@ -214,8 +214,7 @@
   "enabledMcpjsonServers": [
     "context7",
     "playwright",
-    "serena",
-    "sequential-thinking"
+    "serena"
   ],
 
   "hooks": {

@@ -19,9 +19,11 @@ ENV TZ="$TZ"
 # Supply chain: ビルド時の npm にもクールダウンを適用
 # node:24 は npm 11.x 同梱のため min-release-age が利用可能
 # workspace/.npmrc はビルド時にマウントされないため、グローバル設定で適用
+# 緊急時は --build-arg NPM_MIN_RELEASE_AGE=0 で待機なしビルド可能
+ARG NPM_MIN_RELEASE_AGE=7
 RUN npm config set -g ignore-scripts true && \
   npm config set -g save-exact true && \
-  npm config set -g min-release-age 7
+  npm config set -g min-release-age ${NPM_MIN_RELEASE_AGE}
 
 # --- Layer 1: 基本開発ツール ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -200,7 +202,6 @@ RUN cd /tmp && /usr/local/bin/install-claude.sh
 # --- MCP server npm packages (個別インストールで1つの失敗が他に影響しない) ---
 RUN npm install -g --ignore-scripts @upstash/context7-mcp || echo "WARN: context7-mcp install failed"
 RUN npm install -g --ignore-scripts @playwright/mcp || echo "WARN: playwright-mcp install failed"
-RUN npm install -g --ignore-scripts @modelcontextprotocol/server-sequential-thinking || echo "WARN: sequential-thinking install failed"
 
 # Install Playwright Chromium browser
 # Node.js 版（@playwright/mcp が使用）と Python 版（python -m playwright が使用）を両方インストール。
