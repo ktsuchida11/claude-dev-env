@@ -188,7 +188,7 @@ uv run pytest              # テスト
 
 ### 各フックの詳細
 
-- **block-dangerous.sh** — `rm -rf /`, `curl`, `wget`, `nc`, リバースシェル、base64 難読化、設定ファイル改竄、Sandbox バイパスなど 28 パターンを検出・ブロック
+- **block-dangerous.sh** — `rm -rf /`, `curl`, `wget`, `nc`, リバースシェル、base64 難読化、設定ファイル改竄、Sandbox バイパスなど 28 パターンを検出・ブロック。加えて `python -c` / `node -e` 経由のネットワーク呼び出し（urllib / requests / socket / aiohttp / require('http'/'https'/'net'/'http2') / fetch 等）を検出して stderr に警告（主防御は firewall）。`STRICT_EGRESS_BLOCK=true` で警告 → ブロック動作に切替可能
 - **supply-chain-guard.sh** — 4 層チェック: (1) lockfile 存在確認、(2) typosquatting 検知（レーベンシュタイン距離）、(3) 悪意パターンブロック、(4) クールダウン設定確認。検査対象は `npm install`/`pip install`/`uv add`/`uv pip install` に加え `npx <pkg>` も含む（npx は `Bash(npx *)` allow を外しているため、確認プロンプトと並行して typosquatting / 悪意検査が走る）。`ENABLE_SUPPLY_CHAIN_GUARD=false` で無効化可能
 - **dockerfile-cooldown-check.sh** — Dockerfile 内の `npm install`, `pip install`, `uv pip install` にクールダウン設定が適用されているか検査。デフォルトは PostToolUse 警告のみ。`ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true` で PreToolUse モードが有効化され、`[WARN]` レベル違反を `exit 2` でブロック
 - **gha-security-check.sh** — スクリプトインジェクション、`pull_request_target` + HEAD checkout、シークレット漏洩、`write-all` 権限など 10 項目を検出

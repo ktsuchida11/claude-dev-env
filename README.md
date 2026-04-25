@@ -734,6 +734,27 @@ ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true
 よく使う `npx prettier`、`npx tsc`、`npx @playwright/mcp` は通常通り承認可能。引数の組み合わせは
 `-y` `-p <pkg>` `--package=<pkg>` `<pkg>@<version>` `@scope/<pkg>` に対応する。
 
+### python / node 経由 egress の警告
+
+`Bash(python *)` / `Bash(python3 *)` / `Bash(node *)` は allow されているため、
+`python -c "import urllib.request; ..."` のようなコードで `curl`/`wget` の deny を回避できる。
+ただし主防御である `init-firewall.sh` の egress 許可リスト（24 ドメイン）は維持されるため、
+許可外の宛先に到達することは不可能。
+
+**気づき**を提供する目的で、`block-dangerous.sh` が以下のパターンを検出して stderr に警告を出す（デフォルトは `exit 0`）:
+
+- `python -c` / `python3 -c` 内に `urllib` / `http.client` / `httplib` / `requests` / `socket` / `aiohttp` / `urllib3` / `httpx`
+- `node -e` / `node -p` 内に `require('http'/'https'/'net'/'http2')` または `fetch(`
+
+開発作業で正当に使う場面（PyPI/Anthropic API 取得など）が多いため、警告のみが既定。
+強制ブロックしたい場合は `.env` で:
+
+```env
+STRICT_EGRESS_BLOCK=true
+```
+
+を設定すると、検出時に `exit 2` で block される（プロンプト承認後でも遮断）。
+
 ## セキュリティテスト
 
 本環境のセキュリティ対策が正しく機能しているかを検証するためのテストを用意している。

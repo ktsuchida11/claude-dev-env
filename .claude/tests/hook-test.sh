@@ -197,6 +197,79 @@ test_hook "$BLOCK_HOOK" "python3 -c 'print(1+1)'" 0 \
 test_hook "$BLOCK_HOOK" "echo hello" 0 \
   "echo（通常出力）"
 
+echo ""
+echo -e "  ${YELLOW}--- python/node 経由 egress（警告レベル）---${NC}"
+
+# 警告のみ（exit 0 + stderr 出力）
+test_hook "$BLOCK_HOOK" "python -c 'import urllib.request'" 0 \
+  "python -c urllib: 警告のみ exit 0"
+
+test_hook "$BLOCK_HOOK" "python3 -c 'import socket; s=socket.socket()'" 0 \
+  "python3 -c socket: 警告のみ exit 0"
+
+test_hook "$BLOCK_HOOK" "python -c 'import requests; requests.get(x)'" 0 \
+  "python -c requests: 警告のみ exit 0"
+
+test_hook "$BLOCK_HOOK" 'python -c "import http.client"' 0 \
+  "python -c http.client: 警告のみ exit 0"
+
+test_hook "$BLOCK_HOOK" "python3 -c 'import aiohttp'" 0 \
+  "python3 -c aiohttp: 警告のみ exit 0"
+
+test_hook "$BLOCK_HOOK" "node -e \"const h=require('https'); h.get(x)\"" 0 \
+  "node -e require(https): 警告のみ exit 0"
+
+test_hook "$BLOCK_HOOK" "node -e \"const h=require('http'); h.request(x)\"" 0 \
+  "node -e require(http): 警告のみ exit 0"
+
+test_hook "$BLOCK_HOOK" "node -p \"require('net').Socket\"" 0 \
+  "node -p require(net): 警告のみ exit 0"
+
+test_hook "$BLOCK_HOOK" "node -e \"fetch('https://x')\"" 0 \
+  "node -e fetch(): 警告のみ exit 0"
+
+# 検出対象外（許可）
+test_hook "$BLOCK_HOOK" "python -c 'print(1+1)'" 0 \
+  "python -c print: 検出対象外 exit 0"
+
+test_hook "$BLOCK_HOOK" "node -e 'console.log(1+1)'" 0 \
+  "node -e console.log: 検出対象外 exit 0"
+
+echo ""
+echo -e "  ${YELLOW}--- STRICT_EGRESS_BLOCK=true でブロック動作 ---${NC}"
+
+# サブシェルで env を export する（pipe 先の bash に伝えるため）
+test_strict_block() {
+  local command="$1"
+  local expected_exit="$2"
+  local description="$3"
+
+  local input
+  input=$(jq -n --arg cmd "$command" '{"tool_input": {"command": $cmd}}')
+
+  local exit_code=0
+  ( export STRICT_EGRESS_BLOCK=true; echo "$input" | bash "$BLOCK_HOOK" >/dev/null 2>/dev/null ) || exit_code=$?
+
+  if [ "$exit_code" -eq "$expected_exit" ]; then
+    if [ "$expected_exit" -eq 2 ]; then
+      pass "BLOCK: $description"
+    else
+      pass "ALLOW: $description"
+    fi
+  else
+    fail "$description (exit=$exit_code, 期待=$expected_exit)"
+  fi
+}
+
+test_strict_block "python -c 'import urllib.request'" 2 \
+  "STRICT: python urllib → BLOCK"
+
+test_strict_block "node -e \"require('https')\"" 2 \
+  "STRICT: node require(https) → BLOCK"
+
+test_strict_block "python -c 'print(1+1)'" 0 \
+  "STRICT: python plain → ALLOW (検出対象外)"
+
 # =============================================================================
 # 2. supply-chain-guard.sh テスト
 # =============================================================================
