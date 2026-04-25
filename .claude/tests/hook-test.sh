@@ -591,6 +591,151 @@ test_hook "$AUDIT_HOOK" "npm install express" 0 \
 export ENABLE_SUPPLY_CHAIN_GUARD=true
 
 # =============================================================================
+# 5. dockerfile-cooldown-check.sh — PreToolUse / PostToolUse 両モード
+# =============================================================================
+section "5" "dockerfile-cooldown-check.sh — クールダウン block (opt-in)"
+
+DOCKERFILE_HOOK="${BASE_DIR}/hooks/dockerfile-cooldown-check.sh"
+DF_TEST_DIR="${TMPDIR:-/tmp}/dockerfile-cooldown-test-$$"
+mkdir -p "$DF_TEST_DIR"
+
+# クールダウン未指定の Dockerfile
+DF_BAD="$DF_TEST_DIR/Dockerfile.bad"
+cat > "$DF_BAD" <<'EOF'
+FROM node:24
+RUN npm install -g typescript
+RUN pip install requests
+EOF
+
+# クールダウン指定済みの Dockerfile
+DF_GOOD="$DF_TEST_DIR/Dockerfile.good"
+cat > "$DF_GOOD" <<'EOF'
+FROM node:24
+RUN npm config set -g min-release-age 7
+RUN npm install -g --ignore-scripts typescript
+RUN pip install --upgrade pip && pip install --uploaded-prior-to=2026-04-18 --only-binary :all: requests
+EOF
+
+# 非 Dockerfile（hook 対象外）
+NON_DF="$DF_TEST_DIR/script.sh"
+echo "echo hello" > "$NON_DF"
+
+# Pre モード用ヘルパー: tool_name + tool_input を JSON で渡す
+test_pre_hook() {
+  local tool_name="$1"
+  local file_path="$2"
+  local jq_input="$3"
+  local block_env="$4"   # "true" or "" (unset)
+  local expected_exit="$5"
+  local description="$6"
+
+  local input
+  input=$(jq -n \
+    --arg tn "$tool_name" \
+    --arg fp "$file_path" \
+    --argjson ti "$jq_input" \
+    '{"tool_name": $tn, "tool_input": ($ti + {"file_path": $fp})}')
+
+  local exit_code=0
+  # サブシェルで env を export しないと pipe 先の bash には伝わらない
+  if [ -n "$block_env" ]; then
+    ( export ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true; echo "$input" | bash "$DOCKERFILE_HOOK" --pre >/dev/null 2>/dev/null ) || exit_code=$?
+  else
+    ( unset ENABLE_DOCKERFILE_COOLDOWN_BLOCK; echo "$input" | bash "$DOCKERFILE_HOOK" --pre >/dev/null 2>/dev/null ) || exit_code=$?
+  fi
+
+  if [ "$exit_code" -eq "$expected_exit" ]; then
+    if [ "$expected_exit" -eq 2 ]; then
+      pass "BLOCK: $description"
+    else
+      pass "ALLOW: $description"
+    fi
+  else
+    if [ "$expected_exit" -eq 2 ]; then
+      fail "BLOCK 期待だが exit=$exit_code: $description"
+    else
+      fail "ALLOW 期待だが exit=$exit_code: $description"
+    fi
+  fi
+}
+
+# 既存 Bad Dockerfile を上書きする Write を想定したコンテンツ
+BAD_CONTENT_JSON=$(jq -Rs '{"content": .}' < "$DF_BAD")
+GOOD_CONTENT_JSON=$(jq -Rs '{"content": .}' < "$DF_GOOD")
+
+echo -e "  ${YELLOW}--- PreToolUse Write: クールダウン block ---${NC}"
+
+test_pre_hook "Write" "$DF_TEST_DIR/Dockerfile" "$BAD_CONTENT_JSON" "true" 2 \
+  "Write Dockerfile (cooldown 無) + ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true → BLOCK"
+
+test_pre_hook "Write" "$DF_TEST_DIR/Dockerfile" "$GOOD_CONTENT_JSON" "true" 0 \
+  "Write Dockerfile (cooldown 有) + ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true → ALLOW"
+
+test_pre_hook "Write" "$DF_TEST_DIR/Dockerfile" "$BAD_CONTENT_JSON" "" 0 \
+  "Write Dockerfile (cooldown 無) + 環境変数未設定 → ALLOW silent (PostToolUse で警告)"
+
+echo ""
+echo -e "  ${YELLOW}--- PreToolUse Edit: クールダウン block ---${NC}"
+
+# Edit は file_path に既存の "bad" Dockerfile があり、それを new で置換するシナリオ
+EDIT_TO_BAD_JSON=$(jq -n '{"old_string": "FROM node:24", "new_string": "FROM node:24\nRUN npm install -g lodash"}')
+EDIT_TO_GOOD_JSON=$(jq -n '{"old_string": "RUN npm install -g typescript", "new_string": "RUN npm install -g --ignore-scripts --min-release-age=7 typescript"}')
+
+test_pre_hook "Edit" "$DF_BAD" "$EDIT_TO_BAD_JSON" "true" 2 \
+  "Edit Dockerfile (cooldown 無の追加) + BLOCK=true → BLOCK"
+
+test_pre_hook "Edit" "$DF_BAD" "$EDIT_TO_GOOD_JSON" "true" 2 \
+  "Edit Dockerfile (typescript 行は修正しても pip 行が cooldown 無) → BLOCK"
+
+# good Dockerfile に対する Edit は問題なし
+EDIT_GOOD_NOOP=$(jq -n '{"old_string": "FROM node:24", "new_string": "FROM node:24"}')
+test_pre_hook "Edit" "$DF_GOOD" "$EDIT_GOOD_NOOP" "true" 0 \
+  "Edit Dockerfile (cooldown 有 + 変更なし) + BLOCK=true → ALLOW"
+
+echo ""
+echo -e "  ${YELLOW}--- 非 Dockerfile / 無効化スイッチ ---${NC}"
+
+test_pre_hook "Write" "$NON_DF" "$BAD_CONTENT_JSON" "true" 0 \
+  "Write 非 Dockerfile: 対象外 → ALLOW"
+
+# ENABLE_SUPPLY_CHAIN_GUARD=false で全体無効化
+input_disabled=$(jq -n --arg fp "$DF_TEST_DIR/Dockerfile" --argjson ti "$BAD_CONTENT_JSON" \
+  '{"tool_name": "Write", "tool_input": ($ti + {"file_path": $fp})}')
+exit_code=0
+ENABLE_SUPPLY_CHAIN_GUARD=false ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true \
+  bash -c "echo '$input_disabled' | bash '$DOCKERFILE_HOOK' --pre >/dev/null 2>/dev/null" || exit_code=$?
+if [ "$exit_code" -eq 0 ]; then
+  pass "ALLOW: ENABLE_SUPPLY_CHAIN_GUARD=false で全体スルー"
+else
+  fail "ENABLE_SUPPLY_CHAIN_GUARD=false が効かない (exit=$exit_code)"
+fi
+
+echo ""
+echo -e "  ${YELLOW}--- PostToolUse モード（従来動作維持）---${NC}"
+
+# Post モードはディスク上のファイルを読む
+input_post_bad=$(jq -n --arg fp "$DF_BAD" '{"tool_input": {"file_path": $fp}}')
+exit_code=0
+echo "$input_post_bad" | bash "$DOCKERFILE_HOOK" >/dev/null 2>/dev/null || exit_code=$?
+if [ "$exit_code" -eq 0 ]; then
+  pass "ALLOW: Post モード（cooldown 無）→ exit 0 + 警告のみ"
+else
+  fail "Post モードで exit=$exit_code（警告のみのはず）"
+fi
+
+input_post_good=$(jq -n --arg fp "$DF_GOOD" '{"tool_input": {"file_path": $fp}}')
+exit_code=0
+echo "$input_post_good" | bash "$DOCKERFILE_HOOK" >/dev/null 2>/dev/null || exit_code=$?
+if [ "$exit_code" -eq 0 ]; then
+  pass "ALLOW: Post モード（cooldown 有）→ exit 0 警告なし"
+else
+  fail "Post モード（cooldown 有）で exit=$exit_code"
+fi
+
+# 後片付け
+rm -rf "$DF_TEST_DIR"
+
+# =============================================================================
 # 結果サマリー
 # =============================================================================
 echo ""

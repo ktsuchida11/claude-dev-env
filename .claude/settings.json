@@ -216,6 +216,24 @@
             "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/supply-chain-guard.sh"
           }
         ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/dockerfile-cooldown-check.sh --pre"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/dockerfile-cooldown-check.sh --pre"
+          }
+        ]
       }
     ],
     "PostToolUse": [

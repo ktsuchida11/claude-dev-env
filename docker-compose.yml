@@ -119,6 +119,9 @@ services:
       - HOST_WORKSPACE_PATH=${PWD}/workspace
       # Supply Chain Guard (set ENABLE_SUPPLY_CHAIN_GUARD=false in .env to disable)
       - ENABLE_SUPPLY_CHAIN_GUARD=${ENABLE_SUPPLY_CHAIN_GUARD:-true}
+      # Dockerfile cooldown PreToolUse block (opt-in, default false = warning only)
+      # true に設定すると、cooldown 設定なしの Dockerfile 編集を exit 2 で block する
+      - ENABLE_DOCKERFILE_COOLDOWN_BLOCK=${ENABLE_DOCKERFILE_COOLDOWN_BLOCK:-false}
       # LangFuse tracing for Claude Code hook (set TRACE_TO_LANGFUSE=true in .env to enable)
       # CC_LANGFUSE_* は Claude Code Hook 専用。アプリ側の LANGFUSE_* と競合しない
       - TRACE_TO_LANGFUSE=${TRACE_TO_LANGFUSE:-false}
