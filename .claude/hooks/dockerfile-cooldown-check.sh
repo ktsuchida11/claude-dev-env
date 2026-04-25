@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dockerfile-cooldown-check.sh — PostToolUse Hook for Edit/Write
+# dockerfile-cooldown-check.sh — Pre/PostToolUse Hook for Edit/Write
 # Dockerfile の編集・作成時にクールダウン設定の有無をチェックする。
 #
 # 検出対象:
@@ -7,15 +7,31 @@
 #   - pip install に --uploaded-prior-to がないケース
 #   - uv pip install / uv add に --exclude-newer がないケース
 #
-# Exit 0 = 常に成功（ブロックはしない、警告のみ）
+# モード:
+#   --pre 引数あり (PreToolUse 用): tool_input から「変更後の内容」を再構築してチェック。
+#     ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true のときに警告があれば exit 2 でブロック、
+#     それ以外（デフォルト）はサイレント exit 0（PostToolUse 側で警告される）
+#   --pre 引数なし (PostToolUse 用): 従来どおりディスクのファイルを読んで警告のみ
 #
 # 無効化: ENABLE_SUPPLY_CHAIN_GUARD=false
+# Pre ブロック有効化: ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true（デフォルト false = 警告のみ）
 
 set -euo pipefail
 
 # ON/OFF 制御
 if [ "${ENABLE_SUPPLY_CHAIN_GUARD:-true}" = "false" ]; then
   exit 0
+fi
+
+# --- モード判定 ---
+HOOK_MODE="post"
+if [ "${1:-}" = "--pre" ]; then
+  HOOK_MODE="pre"
+  # Pre モードはオプトイン: ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true のときだけ動作。
+  # それ以外はサイレント exit 0（警告は PostToolUse が出力する。二重表示を避ける）
+  if [ "${ENABLE_DOCKERFILE_COOLDOWN_BLOCK:-false}" != "true" ]; then
+    exit 0
+  fi
 fi
 
 # stdin から tool_input を読み取る
@@ -39,14 +55,56 @@ if [ -z "$IS_DOCKERFILE" ]; then
   exit 0
 fi
 
-# ファイルが存在しない場合はスキップ
-if [ ! -f "$FILE_PATH" ]; then
-  exit 0
+# Pre モード: tool_input から「変更後の内容」を再構築する
+# Post モード: ディスク上のファイルを読む（従来動作）
+if [ "$HOOK_MODE" = "pre" ]; then
+  TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
+  case "$TOOL_NAME" in
+    Write)
+      # 新規 / 上書き: tool_input.content がそのまま反映される内容
+      RAW_CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // empty' 2>/dev/null)
+      ;;
+    Edit)
+      # 部分置換: 現状ファイル + old_string→new_string の置換結果
+      OLD_STR=$(echo "$INPUT" | jq -r '.tool_input.old_string // empty' 2>/dev/null)
+      NEW_STR=$(echo "$INPUT" | jq -r '.tool_input.new_string // empty' 2>/dev/null)
+      REPLACE_ALL=$(echo "$INPUT" | jq -r '.tool_input.replace_all // false' 2>/dev/null)
+      if [ ! -f "$FILE_PATH" ]; then
+        # 編集対象が存在しない（理論的には Edit では起きないが念のため）
+        exit 0
+      fi
+      RAW_CONTENT=$(python3 - "$FILE_PATH" "$OLD_STR" "$NEW_STR" "$REPLACE_ALL" << 'PYEOF'
+import sys
+path, old, new, replace_all = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+with open(path, 'r') as f:
+    text = f.read()
+if replace_all == "true":
+    text = text.replace(old, new)
+else:
+    text = text.replace(old, new, 1)
+sys.stdout.write(text)
+PYEOF
+)
+      ;;
+    *)
+      # 想定外のツール: スキップ
+      exit 0
+      ;;
+  esac
+  if [ -z "$RAW_CONTENT" ]; then
+    exit 0
+  fi
+else
+  # Post モード: ファイルが存在しない場合はスキップ
+  if [ ! -f "$FILE_PATH" ]; then
+    exit 0
+  fi
 fi
 
 # === Dockerfile の内容をチェック ===
 
 WARNINGS=""
+WARN_LEVEL_HIT=""  # [WARN] エントリのみ block 対象。[INFO] は警告のみ。
 HEADER_SHOWN=""
 
 show_header() {
@@ -63,11 +121,20 @@ add_warning() {
   show_header
   echo "  $1" >&2
   WARNINGS="true"
+  case "$1" in
+    *"[WARN]"*)
+      WARN_LEVEL_HIT="true"
+      ;;
+  esac
 }
 
 # RUN 命令を抽出（複数行の継続 \ を結合）
 # sed: 行末の \ を除去して次行と結合
-DOCKERFILE_CONTENT=$(sed ':a;/\\$/N;s/\\\n//;ta' "$FILE_PATH" 2>/dev/null || cat "$FILE_PATH")
+if [ "$HOOK_MODE" = "pre" ]; then
+  DOCKERFILE_CONTENT=$(printf '%s' "$RAW_CONTENT" | sed ':a;/\\$/N;s/\\\n//;ta')
+else
+  DOCKERFILE_CONTENT=$(sed ':a;/\\$/N;s/\\\n//;ta' "$FILE_PATH" 2>/dev/null || cat "$FILE_PATH")
+fi
 
 # --- npm install / npm ci チェック ---
 npm_lines=$(echo "$DOCKERFILE_CONTENT" | grep -n 'npm\s\+\(install\|ci\|i\)\b' 2>/dev/null || true)
@@ -168,7 +235,7 @@ if [ -n "$npm_lines" ]; then
   fi
 fi
 
-# === サマリー ===
+# === サマリー / 判定 ===
 if [ -n "$HEADER_SHOWN" ]; then
   echo "==========================================" >&2
   if [ -n "$WARNINGS" ]; then
@@ -176,6 +243,13 @@ if [ -n "$HEADER_SHOWN" ]; then
     echo "    .devcontainer/Dockerfile" >&2
   fi
   echo "" >&2
+fi
+
+# Pre モード + ブロック有効 + WARN レベル警告ありなら exit 2
+# （INFO レベル：npm/pip 自体のアップグレード推奨等はブロックしない）
+if [ "$HOOK_MODE" = "pre" ] && [ -n "$WARN_LEVEL_HIT" ] && [ "${ENABLE_DOCKERFILE_COOLDOWN_BLOCK:-false}" = "true" ]; then
+  echo "{\"decision\": \"block\", \"reason\": \"Blocked: Dockerfile lacks cooldown settings (npm min-release-age / pip --uploaded-prior-to / uv --exclude-newer). Add cooldown directives or set ENABLE_DOCKERFILE_COOLDOWN_BLOCK=false to skip.\"}" >&2
+  exit 2
 fi
 
 exit 0

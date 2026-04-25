@@ -179,7 +179,7 @@ uv run pytest              # テスト
 |------|------|---------|-----------|--------|-----------|
 | `block-dangerous.sh` | PreToolUse(Bash) | 全 Bash コマンド | 0=許可, 2=ブロック | ツール実行をブロック | jq |
 | `supply-chain-guard.sh` | PreToolUse(Bash) | `npm install`, `pip install`, `uv add` 等 | 0=許可, 2=ブロック | ツール実行をブロック | jq, python3 |
-| `dockerfile-cooldown-check.sh` | PostToolUse(Edit/Write) | `Dockerfile*` の編集・作成 | 常に 0 | 警告のみ | - |
+| `dockerfile-cooldown-check.sh` | Pre/PostToolUse(Edit/Write) | `Dockerfile*` の編集・作成 | post: 0、pre: 0 or 2 | post 警告のみ。`ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true` で pre 時に WARN を block | - |
 | `gha-security-check.sh` | PostToolUse(Edit/Write) | `.github/workflows/*.yml` の編集・作成 | 常に 0 | 警告のみ | jq |
 | `lint-on-save.sh` | PostToolUse(Edit) | `.py`, `.js`, `.ts`, `.jsx`, `.tsx` の編集 | 常に 0 | サイレント | ruff, eslint, prettier |
 | `supply-chain-audit.sh` | PostToolUse(Bash) | パッケージインストールコマンド実行後 | 常に 0 | 警告のみ | npm, pip-audit |
@@ -190,7 +190,7 @@ uv run pytest              # テスト
 
 - **block-dangerous.sh** — `rm -rf /`, `curl`, `wget`, `nc`, リバースシェル、base64 難読化、設定ファイル改竄、Sandbox バイパスなど 28 パターンを検出・ブロック
 - **supply-chain-guard.sh** — 4 層チェック: (1) lockfile 存在確認、(2) typosquatting 検知（レーベンシュタイン距離）、(3) 悪意パターンブロック、(4) クールダウン設定確認。`ENABLE_SUPPLY_CHAIN_GUARD=false` で無効化可能
-- **dockerfile-cooldown-check.sh** — Dockerfile 内の `npm install`, `pip install`, `uv pip install` にクールダウン設定が適用されているか警告
+- **dockerfile-cooldown-check.sh** — Dockerfile 内の `npm install`, `pip install`, `uv pip install` にクールダウン設定が適用されているか検査。デフォルトは PostToolUse 警告のみ。`ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true` で PreToolUse モードが有効化され、`[WARN]` レベル違反を `exit 2` でブロック
 - **gha-security-check.sh** — スクリプトインジェクション、`pull_request_target` + HEAD checkout、シークレット漏洩、`write-all` 権限など 10 項目を検出
 - **lint-on-save.sh** — Python: `ruff check --fix` + `ruff format`、JS/TS: `eslint --fix` + `prettier --write`（利用可能な場合のみ）
 - **supply-chain-audit.sh** — `npm audit` / `pip-audit` を自動実行し、脆弱性件数をサマリ表示

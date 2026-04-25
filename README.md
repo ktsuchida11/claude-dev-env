@@ -707,6 +707,19 @@ bash cooldown_management/cooldown-update.sh 3
 ENABLE_SUPPLY_CHAIN_GUARD=false
 ```
 
+### Dockerfile クールダウンチェックを block モード化（オプトイン）
+
+デフォルトでは `dockerfile-cooldown-check.sh` は **警告のみ**（PostToolUse、`exit 0`）で、Dockerfile 編集自体はブロックしない。
+クールダウン未指定の Dockerfile 編集を強制的に止めたい場合は、以下を `.env` に追加してオプトインする:
+
+```env
+ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true
+```
+
+有効化すると PreToolUse で Edit/Write が走るときに Dockerfile の内容を検査し、`[WARN]` レベル
+（npm `--ignore-scripts` / `--min-release-age`、pip `--uploaded-prior-to`、uv `--exclude-newer` の不在）が
+あれば `exit 2` でブロックする。`[INFO]` レベル（npm/pip 自体のアップグレード推奨）はブロックしない。
+
 ## セキュリティテスト
 
 本環境のセキュリティ対策が正しく機能しているかを検証するためのテストを用意している。
