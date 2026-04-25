@@ -158,7 +158,7 @@ Claude に以下を依頼（python3 経由でネットワークテスト）:
 
 | # | 確認方法 | 期待結果 | 確認 |
 |---|---|---|---|
-| H-1 | Claude Code 内で `/mcp` を実行 | 4サーバーのみ表示（context7, playwright, serena, sequential-thinking） | [x] |
+| H-1 | Claude Code 内で `/mcp` を実行 | 3サーバーのみ表示（context7, playwright, serena） | [x] |
 | H-2 | workspace 内に `.mcp.json` を作成し、任意の MCP サーバーを追加 | `enableAllProjectMcpServers=false` で読み込まれない | [x] |
 
 ### I. テレメトリ無効化
