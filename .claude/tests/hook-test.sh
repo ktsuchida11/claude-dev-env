@@ -268,6 +268,39 @@ test_hook "$GUARD_HOOK" "npm test" 0 \
   "npm test（install ではない）"
 
 echo ""
+echo -e "  ${YELLOW}--- npx パッケージ名検査 ---${NC}"
+
+test_hook "$GUARD_HOOK" "npx prettier --write file.ts" 0 \
+  "npx prettier（正規パッケージ）"
+
+test_hook "$GUARD_HOOK" "npx -y prettier" 0 \
+  "npx -y prettier"
+
+test_hook "$GUARD_HOOK" "npx -p prettier prettier --write" 0 \
+  "npx -p prettier（明示パッケージ指定）"
+
+test_hook "$GUARD_HOOK" "npx --package=prettier prettier" 0 \
+  "npx --package=prettier"
+
+test_hook "$GUARD_HOOK" "npx @types/node --help" 0 \
+  "npx @types/node（scoped: typosquatting 検査スキップ）"
+
+test_hook "$GUARD_HOOK" "npx prettier@3.0.0 --write" 0 \
+  "npx prettier@3.0.0（バージョン指定 → 名前のみ抽出）"
+
+test_hook "$GUARD_HOOK" "npx expresss" 2 \
+  "npx typosquatting: expresss → BLOCK"
+
+test_hook "$GUARD_HOOK" "npx -y reqeusts" 2 \
+  "npx -y reqeusts → BLOCK（typosquatting）"
+
+test_hook "$GUARD_HOOK" "npx hack-tool" 2 \
+  "npx hack-tool → BLOCK（悪意パターン）"
+
+test_hook "$GUARD_HOOK" "npx --help" 0 \
+  "npx --help（パッケージ指定なし）→ ALLOW"
+
+echo ""
 echo -e "  ${YELLOW}--- 無効化テスト ---${NC}"
 
 export ENABLE_SUPPLY_CHAIN_GUARD=false

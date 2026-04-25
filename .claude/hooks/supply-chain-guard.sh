@@ -100,6 +100,57 @@ elif echo "$COMMAND" | grep -qE '^\s*(uv)\s+add\s'; then
   PACKAGES=$(echo "$COMMAND" | sed -E 's/^\s*uv\s+add\s+//' | tr ' ' '\n' | grep -vE '^-' | grep -vE '^\s*$' || true)
 elif echo "$COMMAND" | grep -qE '^\s*(uv)\s+pip\s+install\s'; then
   PACKAGES=$(echo "$COMMAND" | sed -E 's/^\s*uv\s+pip\s+install\s+//' | tr ' ' '\n' | grep -vE '^-' | grep -vE '^\s*$' || true)
+elif echo "$COMMAND" | grep -qE '^\s*npx(\s|$)'; then
+  # npx は登録パッケージを 1 行で実行できるためサプライチェーン攻撃の起点になりうる。
+  # 実行対象パッケージ名を抽出して typosquatting / 悪意パターン検査に通す。
+  # 対応形式: npx <pkg>, npx -y <pkg>, npx -p <pkg> <bin>, npx --package <pkg>, npx --package=<pkg>
+  PACKAGES=$(python3 - "$COMMAND" <<'PYEOF'
+import shlex, sys
+try:
+    toks = shlex.split(sys.argv[1])
+except ValueError:
+    sys.exit(0)
+if not toks or toks[0] != 'npx':
+    sys.exit(0)
+out = None
+i = 1
+while i < len(toks):
+    t = toks[i]
+    if t in ('-y', '--yes', '--no'):
+        i += 1
+        continue
+    if t in ('-p', '--package'):
+        if i + 1 < len(toks):
+            out = toks[i + 1]
+        break
+    if t.startswith('--package='):
+        out = t.split('=', 1)[1]
+        break
+    if t == '--':
+        if i + 1 < len(toks):
+            out = toks[i + 1]
+        break
+    if t.startswith('-'):
+        i += 1
+        continue
+    out = t
+    break
+if not out:
+    sys.exit(0)
+# strip @version: name@1.2.3 -> name; @scope/name@1.2.3 -> @scope/name
+if out.startswith('@'):
+    rest = out[1:]
+    if '@' in rest:
+        scope_name, _ = rest.rsplit('@', 1)
+        print('@' + scope_name)
+    else:
+        print(out)
+elif '@' in out:
+    print(out.rsplit('@', 1)[0])
+else:
+    print(out)
+PYEOF
+)
 else
   exit 0
 fi
