@@ -229,7 +229,7 @@ claude-dev-env/
 | Docker | Docker CLI + Docker Compose plugin（ホストの Docker ソケットをマウント） |
 | データベース | postgresql-client |
 | Python | Python 3.12, uv, langfuse, pip-audit |
-| Java | Eclipse Temurin JDK 21, Maven 3.9, Gradle 8.12（`ENABLE_JAVA=false` で無効化可） |
+| Java | Eclipse Temurin JDK 21, Maven 3.9, Gradle 8.12（**デフォルト無効**。`ENABLE_JAVA=true` で有効化） |
 | MCP サーバー | Context7 (ドキュメント検索), Playwright (ブラウザ自動化), Serena (セマンティックコード解析) |
 | 言語サーバー | typescript-language-server, pyright, jdtls (Serena 用) |
 | ユーザー | `node` (非 root) |
@@ -287,7 +287,7 @@ dev コンテナ (Claude Code + gh CLI)
 | **メモリ** | 8GB 以上推奨（Docker Desktop に 4GB 以上を割り当て） |
 | **ディスク** | 空き容量 10GB 以上（ビルド後イメージ: 約 3–5GB） |
 
-> **Java 無効化でビルドを高速化**: Java を使わないプロジェクトでは `.env` に `ENABLE_JAVA=false` を設定すると、JDK・Maven・Gradle のインストールがスキップされ、ビルド時間とイメージサイズを大幅に削減できます。
+> **Java はデフォルト無効**: ビルド高速化のため JDK・Maven・Gradle・jdtls のインストールはデフォルトで行わない。Java を使うプロジェクトでは `.env` に `ENABLE_JAVA=true` を設定するか `docker compose build --build-arg ENABLE_JAVA=true` でビルドする。
 
 #### ソフトウェア
 
@@ -470,7 +470,7 @@ gh issue create --title "Bug: fix crash" --label bug
 | Python | Python 3.12 + uv | Ruff | Ruff format | MyPy | Pyright |
 | Java | Eclipse Temurin JDK 21, Maven 3.9, Gradle 8.12 | - | - | - | jdtls (Eclipse JDT Language Server) |
 
-> Java 環境は `ENABLE_JAVA=false` で無効化可能。Java を使わないプロジェクトではビルド時間を短縮できる。
+> Java 環境は **デフォルトでは無効**（ビルド高速化のため）。利用するには `.env` で `ENABLE_JAVA=true` を設定するか、`docker compose build --build-arg ENABLE_JAVA=true` でビルドする。
 
 ### VS Code 拡張（自動インストール）
 
