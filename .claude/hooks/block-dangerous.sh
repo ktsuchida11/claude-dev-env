@@ -35,13 +35,14 @@ if echo "$COMMAND" | grep -qE '\bunlink\s'; then
 fi
 
 # curl/wget through pipes or subshells (bypass attempt)
-if echo "$COMMAND" | grep -qE '(curl|wget)\s'; then
+if echo "$COMMAND" | grep -qE '\b(curl|wget)\s'; then 
   echo '{"decision": "block", "reason": "Blocked: curl/wget is not allowed in this environment"}' >&2
   exit 2
 fi
 
-# Network tools through pipes
-if echo "$COMMAND" | grep -qE '(nc|ncat|telnet|socat)\s'; then
+# Network tools through pipes                                                                                                                
+# \b 必須: nc に境界が無いと "uv sync " "rsync " 等の "nc " 部分文字列に誤マッチする
+if echo "$COMMAND" | grep -qE '\b(nc|ncat|telnet|socat)\s'; then    
   echo '{"decision": "block", "reason": "Blocked: network tools are not allowed"}' >&2
   exit 2
 fi
@@ -59,7 +60,7 @@ if echo "$COMMAND" | grep -qE 'base64.*-d.*\|\s*(bash|sh|zsh|python|node)'; then
 fi
 
 # Credential file access through cat/less/more with pipes
-if echo "$COMMAND" | grep -qE 'cat.*(\.env|credentials|\.ssh|\.aws|\.gnupg|id_rsa|\.pem)'; then
+if echo "$COMMAND" | grep -qE 'cat.*((\s|/)\.env|credentials|\.ssh|\.aws|\.gnupg|id_rsa|\.pem)'; then   
   echo '{"decision": "block", "reason": "Blocked: credential file access attempt"}' >&2
   exit 2
 fi
@@ -120,7 +121,7 @@ if echo "$COMMAND" | grep -qE '\bshred\s'; then
 fi
 
 # Modification of settings files (パス付き・相対パス両方をカバー)
-if echo "$COMMAND" | grep -qE '(>|>>|tee)\s*.*(settings\.json|\.claude\.json|\.mcp\.json)'; then
+if echo "$COMMAND" | grep -qE '(>>?\s+|tee\s+(-\S+\s+)*)\S*(settings\.json|\.claude\.json|\.mcp\.json)'; then
   echo '{"decision": "block", "reason": "Blocked: modification of Claude Code settings files"}' >&2
   exit 2
 fi
