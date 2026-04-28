@@ -84,7 +84,7 @@ services:
       - /run/secrets:size=1m,mode=700,uid=1000,gid=1000
     volumes:
       - ./workspace:/workspace:delegated
-      - ./.claude:/workspace/.claude-source:ro
+      - ./.claude:/opt/claude-source:ro
       - ./cooldown_management:/workspace/cooldown_management:ro
       - claude-config:/home/node/.claude
       - bash-history:/commandhistory
