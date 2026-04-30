@@ -137,7 +137,7 @@ uv run pytest              # テスト
 - **Layer 1**: 設定ファイルによるネイティブ防御
   - `.npmrc` — `ignore-scripts=true`, `save-exact=true`, `min-release-age=7`
   - `uv.toml` — `exclude-newer`（相対期間 `"7 days"`、更新不要）, レジストリ固定
-  - `.pip.conf` — `uploaded-prior-to`（絶対日付）, レジストリ固定
+  - `.pip.conf` — `uploaded-prior-to`（相対期間 "P7D"）, レジストリ固定
   - `.mvn-settings.xml` — Maven Central固定
 - **Layer 2**: Pre-Install ガード — lockfileチェック、typosquatting検知、クールダウン確認（`supply-chain-guard.sh`）
 - **Layer 3**: Post-Install 監査 — `npm audit` / `pip-audit` 自動実行（`supply-chain-audit.sh`）
@@ -151,15 +151,15 @@ uv run pytest              # テスト
 | --- | --- | --- | --- | --- |
 | npm v11.10.0+ | `.npmrc` | `min-release-age=7` | 日数（相対） | 不要 |
 | uv v0.9.17+ | `uv.toml` | `exclude-newer = "7 days"` | 相対期間 | 不要 |
-| pip v26.0+ | `.pip.conf` | `uploaded-prior-to = 2026-04-06` | 絶対日付 | 要（`cooldown-update.sh`） |
+| pip v26.1+ | `.pip.conf` | `uploaded-prior-to = "P7D"` | 相対期間（ISO 8601） | 不要 |
 
 緊急バイパス:
 
 - npm: `npm install <pkg> --min-release-age=0`
 - uv: `uv add <pkg> --exclude-newer "0 days"`
-- pip: `pip install --uploaded-prior-to=$(date -Idate) <pkg>`
+- pip: `pip install --uploaded-prior-to=P0D <pkg>`
 
-> **注意**: pip のみ絶対日付のため `cooldown-update.sh` で定期更新が必要。npm と uv は相対期間のため更新不要
+> **注意**: いずれも相対期間のため定期更新不要。
 
 無効化: `ENABLE_SUPPLY_CHAIN_GUARD=false`
 
@@ -239,7 +239,7 @@ bash /workspace/.claude/tests/hook-test.sh
 |------|------|--------|
 | 書き込み権限エラー | Sandbox 制限 | `/workspace` 内でのみ作業可能。`/etc` 等への書き込みはブロック |
 | `npm install` でエラー | `ignore-scripts=true` | ネイティブモジュールは `npm rebuild <package>` で再ビルド |
-| pip パッケージが見つからない | クールダウン日付が古い | `bash /workspace/cooldown_management/cooldown-update.sh` で更新 |
+| pip パッケージが見つからない | pip バージョン要件未満 | `pip install --upgrade pip` で v26.1+ にアップグレード |
 | ボリューム権限エラー | Docker ボリューム所有者不一致 | `docker compose down -v` でボリューム再作成（データは消える） |
 
 ### Docker ビルド

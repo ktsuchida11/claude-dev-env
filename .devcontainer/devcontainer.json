@@ -44,5 +44,5 @@
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
   },
-  "postStartCommand": "mkdir -p /workspace/.claude/hooks /workspace/.claude/tests && cp -f /opt/claude-source/hooks/* /workspace/.claude/hooks/ 2>/dev/null && cp -f /opt/claude-source/tests/* /workspace/.claude/tests/ 2>/dev/null && echo 'Hooks/tests synced from /opt/claude-source' && /usr/local/bin/setup-mcp.sh && (sudo /usr/local/bin/init-firewall.sh || echo 'Firewall init skipped (requires NET_ADMIN capability)') && (bash /workspace/cooldown_management/cooldown-update.sh 7 || echo 'Cooldown update skipped') && (/usr/local/bin/decrypt-env.sh || echo 'env decrypt skipped')"
+  "postStartCommand": "mkdir -p /workspace/.claude/hooks /workspace/.claude/tests && cp -f /opt/claude-source/hooks/* /workspace/.claude/hooks/ 2>/dev/null && cp -f /opt/claude-source/tests/* /workspace/.claude/tests/ 2>/dev/null && echo 'Hooks/tests synced from /opt/claude-source' && /usr/local/bin/setup-mcp.sh && (sudo /usr/local/bin/init-firewall.sh || echo 'Firewall init skipped (requires NET_ADMIN capability)') && (/usr/local/bin/decrypt-env.sh || echo 'env decrypt skipped')"
 }

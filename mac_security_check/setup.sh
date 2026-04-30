@@ -78,10 +78,10 @@ if [ "$MODE" = "--check" ] || [ "$MODE" = "-c" ]; then
 
   # 2. クールダウン設定
   echo -e "${CYAN}[2] クールダウン設定${NC}"
-  if [ -f "$PROJECT_ROOT/cooldown_management/cooldown-update.sh" ]; then
-    bash "$PROJECT_ROOT/cooldown_management/cooldown-update.sh" --check 2>/dev/null || true
+  if [ -f "$PROJECT_ROOT/cooldown_management/local-cooldown-setup.sh" ]; then
+    bash "$PROJECT_ROOT/cooldown_management/local-cooldown-setup.sh" --check 2>/dev/null || true
   else
-    echo -e "  ${YELLOW}cooldown-update.sh が見つかりません${NC}"
+    echo -e "  ${YELLOW}local-cooldown-setup.sh が見つかりません${NC}"
   fi
   echo ""
 
@@ -265,7 +265,5 @@ echo "==========================================${NC}"
 echo ""
 echo "次のステップ:"
 echo "  1. DevContainer を起動してください（QUICKSTART.md を参照）"
-echo "  2. 定期的に以下を実行してクールダウン日付を更新:"
-echo "     bash cooldown_management/cooldown-update.sh"
-echo "  3. セキュリティ状態の確認:"
+echo "  2. セキュリティ状態の確認:"
 echo "     bash mac_security_check/setup.sh --check"

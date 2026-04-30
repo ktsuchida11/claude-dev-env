@@ -752,7 +752,7 @@ cat > "$DF_GOOD" <<'EOF'
 FROM node:24
 RUN npm config set -g min-release-age 7
 RUN npm install -g --ignore-scripts typescript
-RUN pip install --upgrade pip && pip install --uploaded-prior-to=2026-04-18 --only-binary :all: requests
+RUN pip install --upgrade pip && pip install --uploaded-prior-to=P7D --only-binary :all: requests
 EOF
 
 # 非 Dockerfile（hook 対象外）

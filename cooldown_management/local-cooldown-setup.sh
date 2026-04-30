@@ -14,13 +14,12 @@
 # 対象:
 #   - npm:  ~/.npmrc に min-release-age, save-exact, ignore-scripts を追加
 #   - uv:   ~/.config/uv/uv.toml に exclude-newer を追加（相対期間、更新不要）
-#   - pip:  ~/.config/pip/pip.conf に uploaded-prior-to を追加（絶対日付、要定期更新）
+#   - pip:  ~/.config/pip/pip.conf に uploaded-prior-to を追加（相対期間 "P{N}D"、更新不要）
 #
 # 注意:
 #   - 既存の設定ファイルはバックアップ（.bak）を作成してからマージ
-#   - npm (min-release-age) と uv (exclude-newer) は相対期間のため定期更新不要
-#   - pip の uploaded-prior-to のみ絶対日付のため定期的な更新が必要
-#     → cooldown-update.sh で自動更新可能
+#   - npm (min-release-age), uv (exclude-newer), pip (uploaded-prior-to)
+#     はいずれも相対期間のため定期更新不要
 
 set -euo pipefail
 
@@ -55,17 +54,6 @@ case "$(uname -s)" in
   Linux)  OS_TYPE="linux" ;;
   *)      echo "[ERROR] Unsupported OS: $(uname -s)"; exit 1 ;;
 esac
-
-# --- 日付計算 ---
-get_cooldown_date() {
-  if [ "$OS_TYPE" = "macos" ]; then
-    date -u -v-${COOLDOWN_DAYS}d +%Y-%m-%d
-  else
-    date -u -d "$COOLDOWN_DAYS days ago" +%Y-%m-%d
-  fi
-}
-
-COOLDOWN_DATE=$(get_cooldown_date)
 
 # --- 色付き出力 ---
 GREEN='\033[0;32m'
@@ -135,7 +123,7 @@ version_gte() {
 
 # --- クールダウン対応の最小バージョン ---
 NPM_MIN_VERSION="11.10.0"    # min-release-age サポート
-PIP_MIN_VERSION="26.0"       # uploaded-prior-to サポート
+PIP_MIN_VERSION="26.1"       # uploaded-prior-to 相対期間 (ISO 8601 duration) サポート
 UV_MIN_VERSION="0.9.17"      # exclude-newer 相対期間サポート（"7 days" 形式）
 
 # --- バージョンチェック ---
@@ -217,17 +205,17 @@ check_pip_version() {
   current=$($pip_cmd --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || echo "0.0")
 
   if version_gte "$current" "$PIP_MIN_VERSION"; then
-    ok "pip v${current} (>= ${PIP_MIN_VERSION} ✓ uploaded-prior-to 対応)"
+    ok "pip v${current} (>= ${PIP_MIN_VERSION} ✓ uploaded-prior-to 相対期間対応)"
     return 0
   else
-    error "pip v${current} — uploaded-prior-to には v${PIP_MIN_VERSION}+ が必要です"
+    error "pip v${current} — uploaded-prior-to 相対期間には v${PIP_MIN_VERSION}+ が必要です"
     echo ""
     info "  アップグレード方法:"
     echo "    ${pip_cmd} install --upgrade pip"
     echo "    # または:"
     echo "    python3 -m pip install --upgrade pip"
     echo ""
-    info "  pip v26.0 未満の場合は uv の使用を推奨します（相対日付対応）"
+    info "  pip v26.1 未満の場合は uv の使用を推奨します（相対期間対応）"
     echo ""
     VERSION_WARNINGS="true"
     return 1
@@ -239,9 +227,8 @@ echo ""
 echo "=========================================="
 echo " Supply Chain Cooldown - ローカルPC設定"
 echo "=========================================="
-echo " クールダウン期間: ${COOLDOWN_DAYS}日"
+echo " クールダウン期間: ${COOLDOWN_DAYS}日 (P${COOLDOWN_DAYS}D)"
 echo " OS: ${OS_TYPE}"
-echo " 日付: ${COOLDOWN_DATE}"
 echo "=========================================="
 echo ""
 
@@ -430,20 +417,11 @@ elif has_config "$PIP_CONF" "uploaded-prior-to"; then
   current=$(grep "^uploaded-prior-to" "$PIP_CONF" | head -1)
   ok "uploaded-prior-to 設定済み: $current"
 
-  # 日付の鮮度チェック
-  pip_date=$(echo "$current" | sed 's/.*=\s*//' | tr -d ' ')
-  if [ "$OS_TYPE" = "macos" ]; then
-    pip_epoch=$(date -jf "%Y-%m-%d" "$pip_date" +%s 2>/dev/null || echo "0")
-  else
-    pip_epoch=$(date -d "$pip_date" +%s 2>/dev/null || echo "0")
-  fi
-  today_epoch=$(date +%s)
-  if [ "$pip_epoch" != "0" ]; then
-    age_days=$(( (today_epoch - pip_epoch) / 86400 ))
-    if [ "$age_days" -gt 14 ]; then
-      warn "uploaded-prior-to が ${age_days} 日前です。更新を推奨します"
-      warn "推奨値: uploaded-prior-to = ${COOLDOWN_DATE}"
-    fi
+  # 絶対日付（YYYY-MM-DD）が設定されている場合は相対期間 (P{N}D) への移行を推奨
+  current_value=$(echo "$current" | sed 's/.*=\s*//' | tr -d ' "')
+  if echo "$current_value" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}'; then
+    warn "uploaded-prior-to が絶対日付 (${current_value}) です。相対期間への移行を推奨します"
+    info "  推奨値: uploaded-prior-to = P${COOLDOWN_DAYS}D（pip v26.1+ で対応、定期更新不要）"
   fi
 else
   warn "uploaded-prior-to が未設定です"
@@ -458,7 +436,7 @@ if [ -z "$CHECK_ONLY" ] && [ -n "$PIP_OK" ]; then
   if [ -n "$NEEDS_PIP_UPDATE" ]; then
     echo ""
     info "以下の設定を ${PIP_CONF} に追加します:"
-    echo "  uploaded-prior-to = ${COOLDOWN_DATE}"
+    echo "  uploaded-prior-to = P${COOLDOWN_DAYS}D"
     echo ""
 
     if confirm "${PIP_CONF} を作成/更新しますか？"; then
@@ -475,20 +453,20 @@ if [ -z "$CHECK_ONLY" ] && [ -n "$PIP_OK" ]; then
 index-url = https://pypi.org/simple/
 no-extra-index-url = true
 
-# クールダウン: 指定日時より前にアップロードされたバージョンのみ（pip v26.0+）
-# この値は定期的に更新が必要（cooldown-update.sh を使用）
-uploaded-prior-to = ${COOLDOWN_DATE}
+# クールダウン: ISO 8601 期間形式で指定（pip v26.1+）
+# 相対期間のため定期更新は不要
+uploaded-prior-to = P${COOLDOWN_DAYS}D
 EOF
       else
         if grep -q "\[global\]" "$PIP_CONF" 2>/dev/null; then
           # [global] セクションの末尾に追加
           sed -i.tmp "/\[global\]/a\\
-uploaded-prior-to = ${COOLDOWN_DATE}" "$PIP_CONF"
+uploaded-prior-to = P${COOLDOWN_DAYS}D" "$PIP_CONF"
           rm -f "${PIP_CONF}.tmp"
         else
           echo "" >> "$PIP_CONF"
           echo "[global]" >> "$PIP_CONF"
-          echo "uploaded-prior-to = ${COOLDOWN_DATE}" >> "$PIP_CONF"
+          echo "uploaded-prior-to = P${COOLDOWN_DAYS}D" >> "$PIP_CONF"
         fi
       fi
 
@@ -520,15 +498,6 @@ echo "=========================================="
 echo ""
 
 if [ -z "$CHECK_ONLY" ]; then
-  info "npm と uv は相対期間のため定期更新不要です"
-  info "pip のみ絶対日付のため定期的な更新が必要です"
-  info "以下のコマンドで pip.conf を更新できます:"
-  echo ""
-  echo "  bash $(dirname "$0")/cooldown-update.sh"
-  echo ""
-  info "cron で自動化する場合:"
-  echo ""
-  echo "  # 毎日9時に更新（${COOLDOWN_DAYS}日前の日付に設定）"
-  echo "  0 9 * * * bash $(cd "$(dirname "$0")" && pwd)/cooldown-update.sh"
+  info "npm / uv / pip いずれも相対期間で設定されているため定期更新は不要です"
   echo ""
 fi
