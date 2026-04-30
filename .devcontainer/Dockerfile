@@ -161,12 +161,11 @@ RUN ARCH=$(dpkg --print-architecture) && \
   rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
 # --- Python tooling ---
-# pip 自体もクールダウン対応バージョン（>= 26.0）にアップグレード
+# pip 自体もクールダウン対応バージョン（>= 26.1）にアップグレード
 # ※ pip/uv 自体のインストールにはクールダウンを適用しない（ブートストラップ）
 RUN pip3 install --break-system-packages --upgrade pip && \
   pip3 install --break-system-packages uv && \
-  COOLDOWN_DATE=$(date -u -d '7 days ago' +%Y-%m-%d 2>/dev/null || date -u -v-7d +%Y-%m-%d) && \
-  pip3 install --break-system-packages --uploaded-prior-to="$COOLDOWN_DATE" langfuse pip-audit playwright
+  pip3 install --break-system-packages --uploaded-prior-to=P7D langfuse pip-audit playwright
 
 # --- Non-root user setup ---
 USER node

@@ -419,7 +419,7 @@ DevContainer 起動:
 | langfuse_hook.py | `.claude/hooks/` | Stop: LangFuse トレーシング（オプション） |
 | decrypt-env.sh | `.devcontainer/decrypt-env.sh` | DevContainer 起動時の .env.enc 自動復号 |
 | .npmrc | `workspace/.npmrc` | npm: ignore-scripts, min-release-age, レジストリ固定 |
-| .pip.conf | `workspace/.pip.conf` | pip: uploaded-prior-to, レジストリ固定 |
+| .pip.conf | `workspace/.pip.conf` | pip: uploaded-prior-to（相対期間 "P7D"）, レジストリ固定 |
 | uv.toml | `workspace/uv.toml` | uv: exclude-newer（相対期間 "7 days"）, レジストリ固定 |
 | .mvn-settings.xml | `workspace/.mvn-settings.xml` | Maven: Central 固定 |
 | init-firewall.sh | `.devcontainer/init-firewall.sh` | OS レベルの通信制御（IPv4/IPv6 dual-stack） |
@@ -437,7 +437,6 @@ DevContainer 起動:
 | mac-supply-chain-check-v2.sh | `mac_security_check/` | 週次サプライチェーンチェック（8項目） |
 | mac-supply-chain-check-v3-additions.sh | `mac_security_check/` | 追加チェック（9項目） |
 | threat-intel-updater.sh | `mac_security_check/` | IOC データベース日次更新 |
-| cooldown-update.sh | `cooldown_management/` | pip の絶対日付を自動更新 |
 | local-cooldown-setup.sh | `cooldown_management/` | ローカル PC 用クールダウン初期設定 |
 | setup-env-encryption.sh | `scripts/` | .env 暗号化セットアップ（SOPS + age + Keychain） |
 | start-devcontainer.sh | `scripts/` | Keychain 連携 DevContainer 起動ラッパー |

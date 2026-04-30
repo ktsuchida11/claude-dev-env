@@ -185,8 +185,7 @@ if [ -n "$pip_lines" ]; then
     # --uploaded-prior-to チェック
     if ! echo "$line_content" | grep -q '\-\-uploaded-prior-to'; then
       add_warning "[WARN] L${line_num}: pip install に --uploaded-prior-to がありません"
-      add_warning "       → COOLDOWN_DATE=\$(date -u -d '7 days ago' +%Y-%m-%d) を計算し"
-      add_warning "         --uploaded-prior-to=\$COOLDOWN_DATE を付与してください"
+      add_warning "         --uploaded-prior-to=P7D を付与してください(pip v26.1+ で ISO 8601 期間形式に対応)"
     fi
 
     # --only-binary チェック（setup.py 実行防止）
@@ -221,7 +220,7 @@ fi
 if [ -n "$pip_lines" ]; then
   if ! echo "$DOCKERFILE_CONTENT" | grep -qE 'pip.*install.*--upgrade\s+pip|pip.*install.*pip\s*>'; then
     add_warning "[INFO] pip のバージョンアップグレードがありません"
-    add_warning "       → pip v26.0+ が --uploaded-prior-to に必要です"
+    add_warning "       → pip v26.1+ が --uploaded-prior-to に必要です"
     add_warning "         RUN pip install --upgrade pip を追加してください"
   fi
 fi
