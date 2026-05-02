@@ -185,7 +185,9 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # --- Python tooling ---
 # pip 自体もクールダウン対応バージョン（>= 26.1）にアップグレード
 # ※ pip/uv 自体のインストールにはクールダウンを適用しない（ブートストラップ）
-RUN pip3 install --break-system-packages --upgrade pip && \
+# Trixie の python3-pip は dpkg 管理 (RECORD ファイル無し) で、--break-system-packages だけでは
+# 上書きインストールが拒否される。--ignore-installed を併用して既存メタデータを無視させる。
+RUN pip3 install --break-system-packages --ignore-installed --upgrade pip && \
   pip3 install --break-system-packages uv && \
   pip3 install --break-system-packages --uploaded-prior-to=P7D langfuse pip-audit playwright
 
