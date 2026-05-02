@@ -63,6 +63,26 @@ RUN ARCH=$(dpkg --print-architecture) && \
   curl -fsSL "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.${ARCH}" \
   -o /usr/local/bin/sops && chmod +x /usr/local/bin/sops
 
+# --- rtk（CLI 出力圧縮プロキシ、LLM トークン削減用） ---
+# 個人メンテのため SHA256 ピン留めで導入。signature/attestation は未発行のため
+# checksums.txt と GitHub TLS が信頼アンカー。RTK_VERSION 更新時は両 SHA を必ず差し替えること。
+# 取得元: https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/checksums.txt
+# arm64 は musl ビルドが無いため glibc 版を使用（base image が glibc なので問題なし）
+ARG RTK_VERSION=0.38.0
+ARG RTK_SHA256_AMD64=9bafb356450fb0f66a7f2d68d0468d1b1e270163f1620574e67a4c8f816d9610
+ARG RTK_SHA256_ARM64=2e171f1d1c76086bb447e372d9332869d2cd3cc106c08c6e5fbd102b12e91ad9
+RUN ARCH=$(dpkg --print-architecture) && \
+  case "$ARCH" in \
+    amd64) TARGET=x86_64-unknown-linux-musl; SHA=$RTK_SHA256_AMD64 ;; \
+    arm64) TARGET=aarch64-unknown-linux-gnu;  SHA=$RTK_SHA256_ARM64 ;; \
+    *) echo "rtk: unsupported arch $ARCH" >&2; exit 1 ;; \
+  esac && \
+  curl -fsSL "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/rtk-${TARGET}.tar.gz" -o /tmp/rtk.tgz && \
+  echo "${SHA}  /tmp/rtk.tgz" | sha256sum -c - && \
+  tar -xzf /tmp/rtk.tgz -C /tmp && \
+  install -m0755 /tmp/rtk /usr/local/bin/rtk && \
+  rm -f /tmp/rtk.tgz /tmp/rtk
+
 # --- Layer 2: ネットワーク・ファイアウォール ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
   iptables \
