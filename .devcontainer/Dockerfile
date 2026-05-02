@@ -1,6 +1,8 @@
 # ベースイメージを SHA256 ダイジェストでピン留め（サプライチェーン対策）
-# 更新時: docker pull node:24 && docker inspect --format='{{index .RepoDigests 0}}' node:24
-FROM node:24@sha256:80fc934952c8f1b2b4d39907af7211f8a9fff1a4c2cf673fb49099292c251cec
+# Trixie (Debian 13, glibc 2.41) を採用。Bookworm (glibc 2.36) では rtk arm64 バイナリが
+# GLIBC_2.39 必須のため実行不可だった経緯による（amd64 は musl 静的なので独立）。
+# 更新時: docker pull node:24-trixie && docker inspect --format='{{index .RepoDigests 0}}' node:24-trixie
+FROM node:24-trixie@sha256:135dc9a66aef366e09958c18dab705081d77fb31eccffe8c3865fac9d3e42a1d
 
 ARG TZ
 ENV TZ="$TZ"
