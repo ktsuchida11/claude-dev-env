@@ -57,6 +57,117 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   curl \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+
+# --- Terraform 開発ツール群（GPG 署名検証 / SHA256 検証） ---
+# 信頼の起点:
+#   - terraform / aws cli   : HashiCorp / AWS の PGP 署名（fingerprint を ARG で固定）
+#   - trivy                 : Aqua Security 公式 APT リポジトリ（signed-by 鍵検証）
+#   - tflint / terraform-docs / gitleaks : 公式 GitHub Release の SHA256 checksums
+# バージョン更新時はリリースノートと checksums の存在のみ確認すれば良い
+# （個別バイナリの SHA を手で書き写す必要はなし）。
+# GPG fingerprint は鍵ローテーション時のみ更新が必要。
+
+# --- 1. Terraform CLI (HashiCorp PGP 署名検証 + SHA256) ---
+# HashiCorp PGP fingerprint: https://www.hashicorp.com/trust/security
+ARG TERRAFORM_VERSION=1.14.9
+ARG HASHICORP_PGP_FINGERPRINT=C874011F0AB405110D02105534365D9472D7468F
+RUN set -eux; \
+  ARCH=$(dpkg --print-architecture); \
+  cd /tmp; \
+  ZIP="terraform_${TERRAFORM_VERSION}_linux_${ARCH}.zip"; \
+  curl -fsSLo "${ZIP}" "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/${ZIP}"; \
+  curl -fsSLo SHA256SUMS "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_SHA256SUMS"; \
+  curl -fsSLo SHA256SUMS.sig "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_SHA256SUMS.sig"; \
+  gpg --keyserver keyserver.ubuntu.com --recv-keys "${HASHICORP_PGP_FINGERPRINT}"; \
+  gpg --verify SHA256SUMS.sig SHA256SUMS; \
+  grep "linux_${ARCH}.zip" SHA256SUMS | sha256sum -c -; \
+  unzip "${ZIP}" -d /usr/local/bin/; \
+  rm "${ZIP}" SHA256SUMS SHA256SUMS.sig; \
+  terraform version
+
+# --- 2. AWS CLI v2 (AWS 公式 PGP 署名検証) ---
+# AWS CLI Public Key: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+ARG AWS_PGP_FINGERPRINT=FB5DB77FD5C118B80511ADA8A6310ACC4672475C
+RUN set -eux; \
+  ARCH=$(dpkg --print-architecture); \
+  if [ "${ARCH}" = "arm64" ]; then AWS_ARCH=aarch64; else AWS_ARCH=x86_64; fi; \
+  cd /tmp; \
+  curl -fsSLo awscliv2.zip "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip"; \
+  curl -fsSLo awscliv2.sig "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip.sig"; \
+  gpg --keyserver keyserver.ubuntu.com --recv-keys "${AWS_PGP_FINGERPRINT}"; \
+  gpg --verify awscliv2.sig awscliv2.zip; \
+  unzip -q awscliv2.zip; \
+  ./aws/install; \
+  rm -rf aws awscliv2.zip awscliv2.sig; \
+  aws --version
+
+# --- 2b. AWS Session Manager Plugin (EC2 への SSM 経由接続用) ---
+# `aws ssm start-session` 用クライアントプラグイン。
+# AWS は session-manager-plugin の PGP 署名 / SHA256 公開ファイルを提供していない
+# ため、S3 への HTTPS (TLS) が信頼アンカー。より厳密にピン留めする場合は
+# https://s3.amazonaws.com/session-manager-downloads/plugin/<VERSION>/ 配下を
+# 利用して SHA256 を ARG で固定する方式へ切り替えること。
+# Refs: https://docs.aws.amazon.com/systems-manager/latest/userguide/install-plugin-debian-and-ubuntu.html
+RUN set -eux; \
+  ARCH=$(dpkg --print-architecture); \
+  if [ "${ARCH}" = "arm64" ]; then SSM_ARCH=ubuntu_arm64; else SSM_ARCH=ubuntu_64bit; fi; \
+  cd /tmp; \
+  curl -fsSLo session-manager-plugin.deb \
+    "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/${SSM_ARCH}/session-manager-plugin.deb"; \
+  dpkg -i session-manager-plugin.deb; \
+  rm session-manager-plugin.deb; \
+  session-manager-plugin
+
+# --- 3. tflint (SHA256 公式 checksums) ---
+ARG TFLINT_VERSION=0.62.0
+RUN set -eux; \
+  ARCH=$(dpkg --print-architecture); \
+  cd /tmp; \
+  ZIP="tflint_linux_${ARCH}.zip"; \
+  curl -fsSLo "${ZIP}" "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/${ZIP}"; \
+  curl -fsSLo tflint_checksums.txt "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/checksums.txt"; \
+  grep "tflint_linux_${ARCH}.zip" tflint_checksums.txt | sha256sum -c -; \
+  unzip "${ZIP}" -d /usr/local/bin/; \
+  rm "${ZIP}" tflint_checksums.txt; \
+  tflint --version
+
+# --- 4. terraform-docs (SHA256 公式 .sha256sum) ---
+# 単一の sha256sum ファイルに全プラットフォームのハッシュが含まれる形式
+ARG TERRAFORM_DOCS_VERSION=0.22.0
+RUN set -eux; \
+  ARCH=$(dpkg --print-architecture); \
+  cd /tmp; \
+  TGZ="terraform-docs-v${TERRAFORM_DOCS_VERSION}-linux-${ARCH}.tar.gz"; \
+  curl -fsSLo "${TGZ}" "https://github.com/terraform-docs/terraform-docs/releases/download/v${TERRAFORM_DOCS_VERSION}/${TGZ}"; \
+  curl -fsSLo terraform-docs.sha256sum "https://github.com/terraform-docs/terraform-docs/releases/download/v${TERRAFORM_DOCS_VERSION}/terraform-docs-v${TERRAFORM_DOCS_VERSION}.sha256sum"; \
+  grep "linux-${ARCH}.tar.gz" terraform-docs.sha256sum | sha256sum -c -; \
+  tar -xzf "${TGZ}" -C /usr/local/bin/ terraform-docs; \
+  rm "${TGZ}" terraform-docs.sha256sum; \
+  terraform-docs --version
+
+# --- 5. trivy (Aqua Security 公式 APT GPG 検証) ---
+RUN set -eux; \
+  curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg; \
+  echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(. /etc/os-release && echo $VERSION_CODENAME) main" > /etc/apt/sources.list.d/trivy.list; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends trivy; \
+  apt-get clean && rm -rf /var/lib/apt/lists/*; \
+  trivy --version
+
+# --- 6. gitleaks (SHA256 公式 checksums) ---
+ARG GITLEAKS_VERSION=8.30.1
+RUN set -eux; \
+  ARCH=$(dpkg --print-architecture); \
+  if [ "${ARCH}" = "arm64" ]; then GL_ARCH=arm64; else GL_ARCH=x64; fi; \
+  cd /tmp; \
+  TGZ="gitleaks_${GITLEAKS_VERSION}_linux_${GL_ARCH}.tar.gz"; \
+  curl -fsSLo "${TGZ}" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${TGZ}"; \
+  curl -fsSLo gitleaks_checksums.txt "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"; \
+  grep "linux_${GL_ARCH}.tar.gz" gitleaks_checksums.txt | sha256sum -c -; \
+  tar -xzf "${TGZ}" -C /usr/local/bin/ gitleaks; \
+  rm "${TGZ}" gitleaks_checksums.txt; \
+  gitleaks version
+
 # --- SOPS（.env 暗号化・復号バックエンド） ---
 # SOPS は CNCF（旧 Mozilla）の getsops/sops 公式バイナリを GitHub release から取得
 # age 本体は distro パッケージで導入済み（Debian Bookworm の age 1.1.1、Layer 1 参照）
