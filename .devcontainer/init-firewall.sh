@@ -143,6 +143,67 @@ while read -r cidr; do
     ipset add allowed-domains "$cidr" -exist
 done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
 
+# Fetch AWS IP ranges (selected regions + GLOBAL, service=AMAZON super-set)
+# Covers S3 / EC2 / STS / KMS / IAM / Route53 etc. without manual host enumeration.
+# IPs rotate frequently — AWS CLI may switch endpoints between requests.
+# AWS_REGION_ALLOW: space-separated. us-east-1 is required for ACM certs used by
+# Cognito custom domain (ACM cert for Cognito must live in us-east-1).
+AWS_REGION_ALLOW="${AWS_REGION_ALLOW:-ap-northeast-1 us-east-1}"
+# IFS=$'\n\t' のため $AWS_REGION_ALLOW のスペース区切りが split されない。
+# 明示的に配列へ展開する。
+IFS=' ' read -ra AWS_REGION_ALLOW_ARR <<< "$AWS_REGION_ALLOW"
+echo "Fetching AWS IP ranges for ${AWS_REGION_ALLOW_ARR[*]} + GLOBAL..."
+aws_ranges=$(curl -fsSL https://ip-ranges.amazonaws.com/ip-ranges.json) || \
+    { echo "ERROR: Failed to fetch AWS ip-ranges.json"; exit 1; }
+
+if ! echo "$aws_ranges" | jq -e '.prefixes and .ipv6_prefixes' >/dev/null; then
+    echo "ERROR: AWS ip-ranges.json missing required fields"
+    exit 1
+fi
+
+# IPv4 prefixes for selected regions (AMAZON super-set)
+for aws_region in "${AWS_REGION_ALLOW_ARR[@]}"; do
+    while read -r cidr; do
+        [ -z "$cidr" ] && continue
+        echo "Adding AWS IPv4 range $cidr ($aws_region)"
+        ipset add allowed-domains "$cidr" -exist
+    done < <(echo "$aws_ranges" | jq -r --arg region "$aws_region" \
+        '.prefixes[] | select(.region == $region) | select(.service == "AMAZON") | .ip_prefix' \
+        | (aggregate -q 2>/dev/null || cat))
+done
+
+# IPv4 GLOBAL prefixes (region-less endpoints: IAM, Route53, etc.)
+# Route53 / Route53 health-check IPs are published under their own service
+# categories (not always under AMAZON super-set), so include them explicitly.
+while read -r cidr; do
+    [ -z "$cidr" ] && continue
+    echo "Adding AWS GLOBAL IPv4 range $cidr"
+    ipset add allowed-domains "$cidr" -exist
+done < <(echo "$aws_ranges" | jq -r \
+    '.prefixes[] | select(.region == "GLOBAL") | select(.service == "AMAZON" or .service == "ROUTE53" or .service == "ROUTE53_HEALTHCHECKS") | .ip_prefix' \
+    | (aggregate -q 2>/dev/null || cat))
+
+# IPv6 prefixes for selected region (only when IPv6 stack is available)
+if [ "$HAS_IPV6" = true ]; then
+    for aws_region in "${AWS_REGION_ALLOW_ARR[@]}"; do
+        while read -r cidr6; do
+            [ -z "$cidr6" ] && continue
+            echo "Adding AWS IPv6 range $cidr6 ($aws_region)"
+            ipset add allowed-domains-v6 "$cidr6" -exist
+        done < <(echo "$aws_ranges" | jq -r --arg region "$aws_region" \
+            '.ipv6_prefixes[] | select(.region == $region) | select(.service == "AMAZON") | .ipv6_prefix')
+    done
+
+    # IPv6 GLOBAL prefixes (parity with IPv4 GLOBAL block above).
+    # Includes Route53 GLOBAL IPv6 endpoints.
+    while read -r cidr6; do
+        [ -z "$cidr6" ] && continue
+        echo "Adding AWS GLOBAL IPv6 range $cidr6"
+        ipset add allowed-domains-v6 "$cidr6" -exist
+    done < <(echo "$aws_ranges" | jq -r \
+        '.ipv6_prefixes[] | select(.region == "GLOBAL") | select(.service == "AMAZON" or .service == "ROUTE53") | .ipv6_prefix')
+fi
+
 # Add well-known CIDR ranges for CDN services (IPs rotate frequently)
 # Google: https://support.google.com/a/answer/10026322
 echo "Adding Google CIDR ranges..."
@@ -198,6 +259,57 @@ ALL_DOMAINS=(
     "finance.yahoo.com"
     "query1.finance.yahoo.com"                                                                                                                   
     "query2.finance.yahoo.com"
+                                   
+    # === AWS IP Ranges API ===
+    # ip-ranges.json を fetch する curl 自身を許可するため
+    "ip-ranges.amazonaws.com"
+
+    # === AWS SSO (mra-dev) ===
+    # CloudFront 等別プールで CIDR fetch ではカバーできないため明示
+    "oidc.ap-northeast-1.amazonaws.com"                 
+    "portal.sso.ap-northeast-1.amazonaws.com"           
+    "device.sso.ap-northeast-1.amazonaws.com"           
+    "signin.aws.amazon.com"
+    # SSO start URL のサブドメイン (実際の URL に置換)  
+    # "d-xxxxxxxxxx.awsapps.com"                        
+
+    # === AWS Auth ===                                  
+    "sts.amazonaws.com"
+    "sts.ap-northeast-1.amazonaws.com"          
+    "iam.amazonaws.com"
+    
+    # === Terraform state ===
+    "s3.ap-northeast-1.amazonaws.com"                   
+    "mra-dev-terraform-state.s3.ap-northeast-1.amazonaws.com"                                                   
+    "dynamodb.ap-northeast-1.amazonaws.com"
+    
+    # === KMS / Secrets ===
+    "kms.ap-northeast-1.amazonaws.com"
+    "secretsmanager.ap-northeast-1.amazonaws.com"
+ 
+    # === Service APIs ===                              
+    "ec2.ap-northeast-1.amazonaws.com"                  
+    "ecs.ap-northeast-1.amazonaws.com"
+    "ecr.ap-northeast-1.amazonaws.com"                  
+    "api.ecr.ap-northeast-1.amazonaws.com"
+    "rds.ap-northeast-1.amazonaws.com"
+    "elasticache.ap-northeast-1.amazonaws.com"
+    "elasticfilesystem.ap-northeast-1.amazonaws.com"
+    "cognito-idp.ap-northeast-1.amazonaws.com"
+    "route53.amazonaws.com"
+    "acm.ap-northeast-1.amazonaws.com"
+    # Cognito 用 ACM 証明書は us-east-1 必須
+    "acm.us-east-1.amazonaws.com"
+    "elasticloadbalancing.ap-northeast-1.amazonaws.com" 
+    "wafv2.ap-northeast-1.amazonaws.com"
+    "lambda.ap-northeast-1.amazonaws.com"
+    "logs.ap-northeast-1.amazonaws.com"
+    "monitoring.ap-northeast-1.amazonaws.com"
+    "events.ap-northeast-1.amazonaws.com"
+    "application-autoscaling.ap-northeast-1.amazonaws.com"
+    "servicediscovery.ap-northeast-1.amazonaws.com"
+    "ssm.ap-northeast-1.amazonaws.com"
+    "ssmmessages.ap-northeast-1.amazonaws.com"
 )
 
 is_critical_domain() {
