@@ -21,6 +21,31 @@ model_list:
       model: anthropic/claude-opus-4-6
       api_key: os.environ/ANTHROPIC_API_KEY
 
+  # ========== Ollama (host 側で稼働、host.docker.internal 経由) ==========
+  # finance-llm Phase 5: LoRA fine-tuned モデルと比較用ベースを公開
+  # extra_body.think=false は Qwen3 thinking モード暴走防止 (Phase 4 知見)
+  - model_name: qwen3-finance
+    litellm_params:
+      model: ollama_chat/qwen3-finance:v1
+      api_base: http://host.docker.internal:11434
+      extra_body:
+        think: false
+
+  - model_name: qwen3-base
+    litellm_params:
+      model: ollama_chat/qwen3:8b
+      api_base: http://host.docker.internal:11434
+      extra_body:
+        think: false
+
+  # Phase 7 用エイリアス: Claude Code から qwen3-finance を呼ぶ際に anthropic 名で受ける
+  - model_name: claude-3-5-sonnet-20241022
+    litellm_params:
+      model: ollama_chat/qwen3-finance:v1
+      api_base: http://host.docker.internal:11434
+      extra_body:
+        think: false
+
 
 litellm_settings:
   drop_params: true
