@@ -181,7 +181,6 @@ claude-dev-env/
 │   ├── setup-env-encryption.sh        # .env 暗号化セットアップ（SOPS + age + Keychain）
 │   └── start-devcontainer.sh          # Keychain 連携 DevContainer 起動ラッパー
 ├── .sops.yaml.example                 # SOPS 設定テンプレート
-├── env-encryption-defense-in-depth-guide.md  # .env 暗号化詳細ガイド
 ├── workspace/                         # コンテナ内 /workspace にマウント
 │   ├── .claude/                       # Claude Code コンテナ内設定
 │   │   ├── settings.json              # 権限・Sandbox・Hook 設定
@@ -223,7 +222,7 @@ claude-dev-env/
 | --- | --- |
 | ベースイメージ | `node:24` |
 | シェル | zsh (Powerlevel10k テーマ) |
-| Claude Code | `@anthropic-ai/claude-code@latest` |
+| Claude Code | standalone インストーラ（`claude.ai/install.sh`）。`CLAUDE_CODE_VERSION` build arg でバージョン固定可能（デフォルト: latest） |
 | 開発ツール | git, vim, nano, jq, fzf, ripgrep, gh (GitHub CLI), git-delta |
 | Docker | Docker CLI + Docker Compose plugin（ホストの Docker ソケットをマウント） |
 | データベース | postgresql-client |

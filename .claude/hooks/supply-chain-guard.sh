@@ -1,17 +1,31 @@
 #!/usr/bin/env bash
 # supply-chain-guard.sh — PreToolUse Hook for package install commands
-# Exit 0 = allow, Exit 2 = block
 #
-# 4 層チェック:
-#   1. lockfile / hash mode 確認（再現性確保、本ガードの早期実行）
-#   2. パッケージインストールコマンドの検出
-#   3. 悪意パターン検出（危険なキーワード）
-#   4. typosquatting 検知（人気パッケージとの類似度）
+# 5 層チェック:
+#   1. クールダウン迂回フラグの検出（ask: ユーザー確認を強制）
+#   2. lockfile / hash mode 確認（再現性確保、本ガードの早期実行）
+#   3. パッケージインストールコマンドの検出
+#   4. 悪意パターン検出（危険なキーワード）
+#   5. typosquatting 検知（人気パッケージとの類似度）
+#
+# 出力形式: hookSpecificOutput.permissionDecision を stdout に出す（正式スキーマ）。
+# 旧形式の `{"decision":"block"}` + exit 2 は PreToolUse では deprecated。
 #
 # 無効化: ENABLE_SUPPLY_CHAIN_GUARD=false
 # lockfile チェックのみ無効化: SKIP_LOCKFILE_CHECK=true
 
 set -uo pipefail
+
+# --- 出力ヘルパ ---
+# stdout に正式スキーマの JSON を出力する。JSON が判断を伝えるため exit 0。
+deny() {
+  jq -nc --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  exit 0
+}
+ask() {
+  jq -nc --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+  exit 0
+}
 
 # --- 無効化チェック ---
 if [ "${ENABLE_SUPPLY_CHAIN_GUARD:-true}" = "false" ]; then
@@ -26,6 +40,12 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
+# === クールダウン迂回フラグの検出（ask） ===
+# 7 日クールダウンは axios/LiteLLM 型のサプライチェーン攻撃への主防御。
+# 緊急バイパス（--min-release-age=0 等）は可能なまま、ユーザー確認を必ず挟む。
+if echo "$COMMAND" | grep -qE -- '--min-release-age[= ]0\b|--exclude-newer[= ]["'"'"']?0 ?(days?|d)\b|--uploaded-prior-to[= ]P0D\b'; then
+  ask "Package cooldown bypass flag detected (--min-release-age=0 / --exclude-newer '0 days' / --uploaded-prior-to=P0D). This disables the 7-day supply-chain protection. Confirm before proceeding."
+fi
 
 # === lockfile / hash mode チェック ===
 # transitive 依存の再現性が無いと、毎回最新版が取得され攻撃の入り口となる。
@@ -36,8 +56,7 @@ if [ "${SKIP_LOCKFILE_CHECK:-false}" != "true" ]; then
 
   block_lockfile() {
     local mgr="$1" required="$2" hint="$3"
-    echo "{\"decision\": \"block\", \"reason\": \"Blocked: ${mgr} requires ${required} for reproducible install. ${hint}\"}" >&2
-    exit 2
+    deny "Blocked: ${mgr} requires ${required} for reproducible install. ${hint}"
   }
 
   warn_hash_mode() {
@@ -164,8 +183,7 @@ MALICIOUS_PATTERNS='hack|backdoor|keylog|reverse.shell|trojan|malware|exploit|ro
 
 for pkg in $PACKAGES; do
   if echo "$pkg" | grep -qiE "$MALICIOUS_PATTERNS"; then
-    echo "{\"decision\": \"block\", \"reason\": \"Blocked: suspicious package name '$pkg' matches malicious pattern\"}" >&2
-    exit 2
+    deny "Blocked: suspicious package name '$pkg' matches malicious pattern"
   fi
 done
 
@@ -223,8 +241,7 @@ PYEOF
 ) || true
 
     if [ -n "$TYPO_RESULT" ]; then
-      echo "{\"decision\": \"block\", \"reason\": \"Blocked: '$pkg' looks like a typosquatting of '$TYPO_RESULT'. Did you mean '$TYPO_RESULT'?\"}" >&2
-      exit 2
+      deny "Blocked: '$pkg' looks like a typosquatting of '$TYPO_RESULT'. Did you mean '$TYPO_RESULT'?"
     fi
   done
 fi

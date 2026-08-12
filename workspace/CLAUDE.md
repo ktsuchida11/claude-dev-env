@@ -17,24 +17,39 @@
 
 ### ネットワーク
 
-- ファイアウォール（iptables）で外部通信を制限している
+- **通信制御の主防御はファイアウォール（iptables + ipset）**。プロセス・permission mode に関係なく全通信に適用される
+- sandbox の `allowedDomains` は sandboxed コマンド限定の第2層。sandbox 外で実行される `docker` / `gh`（excludedCommands）や MCP サーバープロセスに効くのは firewall のみ
 - **許可**: GitHub, npm, PyPI, Anthropic API, OpenAI API, Context7
 - **ブロック**: 上記以外のすべての外部通信
 - `curl`, `wget` は settings.json で deny 設定済み
 - ローカルポートへのバインド（localhost）は許可。Unixソケットも制限なし
 
+### Permission mode（auto モード）
+
+Claude Code 2.1.177+ のデフォルトである **auto モード**を `permissions.defaultMode: "auto"` で明示している。
+
+- auto モードは「確認プロンプトが出るはずだった操作」を LLM 分類器の判断に置き換えるモード
+- ただし判定順序は `deny ルール → PreToolUse hook → allow ルール → sandbox 自動承認 → 分類器` であり、
+  本環境では sandbox 自動承認（`autoAllowBashIfSandboxed`）により**大半の Bash コマンドは分類器に届かず自動承認**される
+- **分類器はセキュリティ境界ではない**。境界は deny ルール / PreToolUse hook / sandbox filesystem / firewall（すべてモード非依存で決定的に動作）
+- `autoMode.hard_deny`（ユーザーが明示指示しても拒否）/ `soft_deny`（明示的な意図があれば許可）は、
+  分類器が判定する残余（sandbox 外コマンド・allow に無い操作・MCP ツール等）への追加防御
+- 拒否された操作は `/permissions` の Recent タブと `.claude/logs/permission-denied.jsonl`（permission-denied-log.sh）で確認できる
+
 ### コマンド制限
 
 - `curl`, `wget`, `ssh`, `scp`, `nc` などネットワーク系コマンドは使用不可
-- `sudo`, `su` は使用不可（非rootユーザー `node` で動作）
+- `sudo`, `su` は使用不可（非rootユーザー `node` で動作。Hooks でも二重ブロック）
 - `rm -rf /`, `rm -rf ~` など破壊的コマンドはHooksでもブロック
 - `--dangerously-skip-permissions` は無効化済み
+- 既知の残余リスク: `make` は Makefile 記載の任意コマンドを実行できる（allow 済み）。Makefile は workspace 内コンテンツでありプロンプトインジェクション経路になり得るが、sandbox + firewall が境界として機能する
 
 ### ファイル削除のルール（重要）
 
 **ファイル削除は必ずユーザーの確認を経て行うこと。** 確認プロンプトをバイパスする手段は一切使用禁止。
 
-- **`rm` コマンド**: allow リストに含まれていないため、実行時にユーザーへの確認プロンプトが表示される。これが正しい動作。確認を得てから削除すること
+- **`rm` / `rmdir` コマンド**: `block-dangerous.sh` が `permissionDecision: "ask"` を返すため、**auto モード + sandbox 自動承認でも必ず確認プロンプトが表示される**。これが正しい動作。確認を得てから削除すること
+  - 注: auto モードでは sandbox 自動承認により allow 外のコマンドもプロンプトなしで実行され得るため、削除の確認強制は hook が担っている
 - **`rm -rf /`, `rm -rf ~` 等**: 危険なターゲットは deny で完全ブロック
 - **以下のバイパス手段は deny + Hooks で完全ブロック（確認プロンプトを回避できてしまうため）**:
   - `unlink` — rm の代替コマンド
@@ -169,8 +184,12 @@ uv run pytest              # テスト
 
 ### 実行モデル
 
-- **PreToolUse**: ツール実行**前**に起動。全フックが exit 0 を返した場合のみツール実行を許可。exit 2 でブロック
+- **PreToolUse**: ツール実行**前**に起動。stdout に `hookSpecificOutput.permissionDecision` を返す
+  - `deny`: ツール実行をブロック / `ask`: ユーザー確認プロンプトを強制（auto モード・sandbox 自動承認でも有効）/ 出力なし + exit 0: 判断を後段（ルール・sandbox・分類器）に委ねる
+  - 旧形式の `{"decision":"block"}` + exit 2 は PreToolUse では deprecated
 - **PostToolUse**: ツール実行**後**に起動。情報提供のみ（exit code に関わらずツール実行結果は変わらない）
+- **SessionStart**: セッション開始時に起動。環境検証結果を `additionalContext` でモデルに注入
+- **PermissionDenied**: 権限拒否（ルール / hook / auto モード分類器）の後に起動。監査ログ用
 - **Stop**: Claude Code セッション終了時に起動。バックグラウンド処理用
 
 ### フック一覧
@@ -184,12 +203,14 @@ uv run pytest              # テスト
 | `lint-on-save.sh` | PostToolUse(Edit) | `.py`, `.js`, `.ts`, `.jsx`, `.tsx` の編集 | 常に 0 | サイレント | ruff, eslint, prettier |
 | `supply-chain-audit.sh` | PostToolUse(Bash) | パッケージインストールコマンド実行後 | 常に 0 | 警告のみ | npm, pip-audit |
 | `env-plaintext-guard.sh` | PostToolUse(Bash) | `git commit` 実行後 | 常に 0 | 警告のみ | jq |
+| `session-guard.sh` | SessionStart | セッション開始 | 常に 0 | サイレント（fail-open） | jq |
+| `permission-denied-log.sh` | PermissionDenied | 権限拒否の発生後 | 常に 0 | サイレント（fail-open） | jq |
 | `langfuse_hook.py` | Stop | セッション終了 | 常に 0 | サイレント | python3, langfuse SDK |
 
 ### 各フックの詳細
 
-- **block-dangerous.sh** — `rm -rf /`, `curl`, `wget`, `nc`, リバースシェル、base64 難読化、設定ファイル改竄、Sandbox バイパスなど 28 パターンを検出・ブロック。加えて `python -c` / `node -e` 経由のネットワーク呼び出し（urllib / requests / socket / aiohttp / require('http'/'https'/'net'/'http2') / fetch 等）を検出して stderr に警告（主防御は firewall）。`STRICT_EGRESS_BLOCK=true` で警告 → ブロック動作に切替可能
-- **supply-chain-guard.sh** — 4 層チェック: (1) lockfile 存在確認、(2) typosquatting 検知（レーベンシュタイン距離）、(3) 悪意パターンブロック、(4) クールダウン設定確認。検査対象は `npm install`/`pip install`/`uv add`/`uv pip install` に加え `npx <pkg>` も含む（npx は `Bash(npx *)` allow を外しているため、確認プロンプトと並行して typosquatting / 悪意検査が走る）。`ENABLE_SUPPLY_CHAIN_GUARD=false` で無効化可能
+- **block-dangerous.sh** — deny ゲート: `rm -rf /`, `curl`, `wget`, `nc`, リバースシェル、base64 難読化、sudo、機密ファイルアクセス（コマンド非依存）、設定ファイル改竄（リダイレクト / sed / jq / cp / mv / rsync / ln / tar）、git 経由コード実行（core.pager / fsmonitor 等）、force push、Sandbox バイパス等を検出・ブロック。ask ゲート: 素の `rm` / `rmdir`、`git reset --hard` / `git clean -f`、docker ボリューム破棄はユーザー確認を強制（auto モードの sandbox 自動承認では確認プロンプトが出ないため、hook が確認を復活させる）。加えて `python -c` / `node -e` 経由のネットワーク呼び出しを検出して stderr に警告（主防御は firewall）。`STRICT_EGRESS_BLOCK=true` で警告 → ブロック動作に切替可能
+- **supply-chain-guard.sh** — 5 層チェック: (1) クールダウン迂回フラグ検出（`--min-release-age=0` 等はユーザー確認を強制）、(2) lockfile 存在確認、(3) typosquatting 検知（レーベンシュタイン距離）、(4) 悪意パターンブロック、(5) クールダウン設定確認。検査対象は `npm install`/`pip install`/`uv add`/`uv pip install` に加え `npx <pkg>` も含む（npx は `Bash(npx *)` allow を外しているため、確認プロンプトと並行して typosquatting / 悪意検査が走る）。`ENABLE_SUPPLY_CHAIN_GUARD=false` で無効化可能
 - **dockerfile-cooldown-check.sh** — Dockerfile 内の `npm install`, `pip install`, `uv pip install` にクールダウン設定が適用されているか検査。デフォルトは PostToolUse 警告のみ。`ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true` で PreToolUse モードが有効化され、`[WARN]` レベル違反を `exit 2` でブロック
 - **gha-security-check.sh** — スクリプトインジェクション、`pull_request_target` + HEAD checkout、シークレット漏洩、`write-all` 権限など 10 項目を検出
 - **lint-on-save.sh** — Python: `ruff check --fix` + `ruff format`、JS/TS: `eslint --fix` + `prettier --write`（利用可能な場合のみ）
@@ -228,6 +249,7 @@ bash /workspace/.claude/tests/hook-test.sh
 
 | 症状 | 原因 | 対処法 |
 |------|------|--------|
+| firewall が未初期化（全通信可） | `docker compose up -d` 直接起動では postStartCommand（devcontainer.json の機能）が走らない | VS Code で DevContainer として開くか、`sudo /usr/local/bin/init-firewall.sh` を手動実行。session-guard.sh がセッション開始時に警告する |
 | 外部通信がブロックされる | ファイアウォール許可リスト外 | `.env` で `ENABLE_FIREWALL=false` → 再起動で切り分け |
 | DNS 解決が失敗する | ファイアウォール初期化失敗 | `sudo /usr/local/bin/init-firewall.sh` を手動実行。DNS (port 53) は許可済み |
 | プロキシ環境で接続できない | プロキシ未設定 | `docker-compose.yml` の `HTTP_PROXY` 行をアンコメント。Dockerfile も同様 |
