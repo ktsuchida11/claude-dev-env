@@ -334,8 +334,11 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
   -x
 
 # Install Claude Code CLI at build time
+# CLAUDE_CODE_VERSION でバージョン固定可能（latest / stable / X.Y.Z）。
+# 他ツール同様のサプライチェーン対策として、本番運用では特定バージョンの pin を推奨。
+ARG CLAUDE_CODE_VERSION=latest
 COPY --chmod=755 install-claude.sh /usr/local/bin/install-claude.sh
-RUN cd /tmp && /usr/local/bin/install-claude.sh
+RUN cd /tmp && CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} /usr/local/bin/install-claude.sh
 
 # --- MCP server npm packages (個別インストールで1つの失敗が他に影響しない) ---
 # バージョンは mcp-servers.json と必ず揃える。更新時は両方一緒に変更すること。

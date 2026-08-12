@@ -2,19 +2,29 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
 
   "permissions": {
+    "defaultMode": "auto",
     "allow": [
       "Read",
       "Edit",
       "Bash(git *)",
-      "Bash(npm run *)",
+      "Bash(npm run lint*)",
+      "Bash(npm run test*)",
+      "Bash(npm run build)",
+      "Bash(npm run format)",
+      "Bash(npm run typecheck)",
       "Bash(npm install *)",
       "Bash(npm uninstall *)",
       "Bash(npm test *)",
-      "Bash(npm exec *)",
-      "Bash(node *)",
-      "Bash(uv *)",
-      "Bash(python *)",
-      "Bash(python3 *)",
+      "Bash(node --version)",
+      "Bash(uv sync*)",
+      "Bash(uv add *)",
+      "Bash(uv remove *)",
+      "Bash(uv lock*)",
+      "Bash(uv pip *)",
+      "Bash(uv run pytest*)",
+      "Bash(uv run ruff*)",
+      "Bash(uv run mypy*)",
+      "Bash(python3 --version)",
       "Bash(pip *)",
       "Bash(gradle *)",
       "Bash(mvn *)",
@@ -49,7 +59,6 @@
       "Bash(cd *)",
       "Bash(pwd)",
       "Bash(which *)",
-      "Bash(env)",
       "Bash(printenv *)",
       "Bash(tree *)",
       "Bash(jq *)",
@@ -80,6 +89,9 @@
       "Bash(python3 -c *os.remove*)",
       "Bash(python3 -c *os.unlink*)",
       "Bash(mv * /dev/null)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push * --force*)",
       "Bash(* sed -i * settings.json*)",
       "Bash(* sed -i * .claude.json*)",
       "Bash(* sed -i * .mcp.json*)",
@@ -122,16 +134,15 @@
       "Bash(python3 -c *import*socket*)",
       "Read(.env)",
       "Read(.env.*)",
-      "Write(.env)",
-      "Write(.env.*)",
       "Edit(.env)",
       "Edit(.env.*)",
-      "Write(.claude/hooks/**)",
       "Edit(.claude/hooks/**)",
-      "Write(.claude/settings.json)",
       "Edit(.claude/settings.json)",
-      "Write(.claude/settings.local.json)",
       "Edit(.claude/settings.local.json)",
+      "Edit(.npmrc)",
+      "Edit(.pip.conf)",
+      "Edit(uv.toml)",
+      "Edit(.mvn-settings.xml)",
       "Read(/home/node/.ssh/**)",
       "Read(/home/node/.aws/**)",
       "Read(/home/node/.gnupg/**)",
@@ -147,6 +158,7 @@
     "enabled": true,
     "autoAllowBashIfSandboxed": true,
     "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
     "excludedCommands": [
       "docker *",
       "gh *"
@@ -168,6 +180,10 @@
         "/workspace/.claude/settings.local.json",
         "/workspace/.claude/hooks",
         "/workspace/.claude/skills",
+        "/workspace/.npmrc",
+        "/workspace/.pip.conf",
+        "/workspace/uv.toml",
+        "/workspace/.mvn-settings.xml",
         "/etc"
       ],
       "denyRead": [
@@ -179,7 +195,7 @@
     "network": {
       "allowedDomains": [
         "finance.yahoo.com",
-        "query1.finance.yahoo.com",                                                                                                                   
+        "query1.finance.yahoo.com",
         "query2.finance.yahoo.com",
         "github.com",
         "*.github.com",
@@ -204,9 +220,37 @@
         "cloud.langfuse.com",
         "us.cloud.langfuse.com"
       ],
+      "deniedDomains": [
+        "gist.githubusercontent.com"
+      ],
       "allowLocalBinding": true,
       "allowAllUnixSockets": false
     }
+  },
+
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "DevContainer 内で動作。書き込み可能なのは /workspace とパッケージキャッシュ (~/.npm, ~/.cache, ~/.m2/repository, ~/.gradle) と /tmp のみ",
+      "外向き通信は iptables + ipset の許可リストで制限済み。許可外ドメインには到達できない",
+      "非 root ユーザー node で動作し、sudo は firewall 初期化専用（Claude は使用しない）",
+      "削除操作は種類を問わずユーザー確認が必要というポリシーで運用している"
+    ],
+    "hard_deny": [
+      "$defaults",
+      "settings.json / .claude.json / .mcp.json / .claude/hooks / .claude/skills の作成・改変・削除",
+      "sandbox / Hooks / firewall の無効化・変更（iptables, ipset, init-firewall.sh, disableAllHooks, dangerouslyDisableSandbox 等）",
+      ".env や鍵ファイル（SSH/age/AWS 認証情報）の読み取り・複製・外部送信",
+      "サプライチェーン防御設定（.npmrc / .pip.conf / uv.toml / .mvn-settings.xml）の改変",
+      "gh api / gh auth token / gh secret / gh variable / gh workflow run / gh ssh-key / gh gpg-key の実行"
+    ],
+    "soft_deny": [
+      "$defaults",
+      "ファイル・ディレクトリの削除（rm, unlink, shred, find -delete, xargs rm 等、手段を問わない）",
+      "git push --force / git reset --hard / git clean によるコミット履歴・作業内容の破棄",
+      "docker のボリューム・イメージ破棄（docker compose down -v, docker volume rm 等）",
+      "パッケージクールダウンの迂回（--min-release-age=0, --exclude-newer '0 days', --uploaded-prior-to=P0D）"
+    ]
   },
 
   "enableAllProjectMcpServers": false,
@@ -291,6 +335,26 @@
           {
             "type": "command",
             "command": "bash /workspace/.claude/hooks/env-plaintext-guard.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /workspace/.claude/hooks/session-guard.sh"
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /workspace/.claude/hooks/permission-denied-log.sh"
           }
         ]
       }

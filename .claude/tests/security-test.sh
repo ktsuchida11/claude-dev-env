@@ -114,13 +114,16 @@ else
   fi
 fi
 
-# ブロック対象への通信テスト（example.com — 許可リスト外）
+# ブロック対象への通信テスト（1.1.1.1 — 許可リスト外・常時応答するホスト）
+# 注: 以前は example.com の旧 IP (93.184.216.34) を使っていたが、この IP は
+# 現在応答しないため firewall 無効時でも「拒否された」ように見える偽 PASS になっていた。
+# 1.1.1.1:443 (Cloudflare DNS) は常時応答するため、接続できたら firewall 無効と断定できる。
 if command -v python3 &>/dev/null; then
   # タイムアウト3秒で接続テスト
   BLOCK_RESULT=$(timeout 5 python3 -c "
 import socket, sys
 try:
-    s = socket.create_connection(('93.184.216.34', 80), timeout=3)
+    s = socket.create_connection(('1.1.1.1', 443), timeout=3)
     s.close()
     print('CONNECTED')
 except Exception as e:
@@ -128,9 +131,9 @@ except Exception as e:
 " 2>&1)
 
   if echo "$BLOCK_RESULT" | grep -q "BLOCKED\|timed out\|Connection refused\|Network is unreachable"; then
-    pass "外部通信ブロック: example.com (93.184.216.34) への接続が拒否された"
+    pass "外部通信ブロック: 1.1.1.1:443（許可リスト外）への接続が拒否された"
   elif echo "$BLOCK_RESULT" | grep -q "CONNECTED"; then
-    fail "外部通信ブロック: example.com (93.184.216.34) に接続できてしまった"
+    fail "外部通信ブロック: 1.1.1.1:443 に接続できてしまった（firewall 未初期化の可能性。docker compose 直接起動では postStartCommand が走らない — sudo /usr/local/bin/init-firewall.sh を実行）"
   else
     skip "外部通信ブロック: テスト結果が不明 ($BLOCK_RESULT)"
   fi
@@ -381,6 +384,64 @@ if [ -f "$SETTINGS" ]; then
     fail "Sandbox: 無効"
   fi
 
+  # --- auto モード（Claude Code 2.1.177+）対応の確認 ---
+
+  # defaultMode が明示されているか（CLI デフォルト変更に左右されないため）
+  DEFAULT_MODE=$(jq -r '.permissions.defaultMode // "not_set"' "$SETTINGS" 2>/dev/null)
+  if [ "$DEFAULT_MODE" = "auto" ]; then
+    pass "permission mode: defaultMode=auto を明示"
+  else
+    fail "permission mode: defaultMode が auto でない ($DEFAULT_MODE)"
+  fi
+
+  # autoMode ブロックが存在し $defaults で組込ルールを温存しているか
+  if jq -e '.autoMode.hard_deny | index("$defaults")' "$SETTINGS" >/dev/null 2>&1; then
+    pass "autoMode: hard_deny が存在し \$defaults を含む"
+  else
+    fail "autoMode: hard_deny が無いか \$defaults を含まない"
+  fi
+
+  # 回帰防止: auto モードが実行時に破棄する「危険な allow ルール」が残っていないか
+  # （Bash(python *) 等の広いプレフィックスは分類器を迂回するとして黙って無効化される）
+  STRIPPED_RULES='Bash(npm run \*)|Bash(node \*)|Bash(python \*)|Bash(python3 \*)|Bash(env)|Bash(npm exec \*)|Bash(uv \*)|Bash(bash \*)|Bash(sh \*)|Bash(npx \*)'
+  STRIP_HIT=$(jq -r '.permissions.allow[]' "$SETTINGS" 2>/dev/null | grep -cE "^(${STRIPPED_RULES})$" || true)
+  if [ "$STRIP_HIT" -eq 0 ]; then
+    pass "allow リスト: auto モードで破棄される広いプレフィックスルールなし"
+  else
+    fail "allow リスト: auto モードで破棄されるルールが ${STRIP_HIT} 件残存（具体形に差し替えること）"
+  fi
+
+  # allowUnsandboxedCommands=false（dangerouslyDisableSandbox パラメータの無効化）
+  UNSANDBOXED=$(jq -r 'if .sandbox.allowUnsandboxedCommands == false then "false" else "not_false" end' "$SETTINGS" 2>/dev/null)
+  if [ "$UNSANDBOXED" = "false" ]; then
+    pass "Sandbox: allowUnsandboxedCommands=false"
+  else
+    fail "Sandbox: allowUnsandboxedCommands が false でない"
+  fi
+
+  # denyWrite が自プロジェクトの settings.json を指しているか（別プロジェクトパス参照の回帰防止）
+  if jq -r '.sandbox.filesystem.denyWrite[]' "$SETTINGS" 2>/dev/null | grep -qE '(/workspace|brew_app)/\.claude/settings\.json'; then
+    pass "sandbox.denyWrite: 自プロジェクトの settings.json を保護"
+  else
+    fail "sandbox.denyWrite: 自プロジェクトの settings.json が保護されていない"
+  fi
+
+  # force push が deny されているか
+  if jq -r '.permissions.deny[]' "$SETTINGS" 2>/dev/null | grep -q 'git push --force'; then
+    pass "deny リスト: git push --force を含む"
+  else
+    fail "deny リスト: git push --force が含まれていない"
+  fi
+
+  # サプライチェーン防御設定ファイルが Edit/Write deny されているか
+  for sc_file in ".npmrc" ".pip.conf" "uv.toml" ".mvn-settings.xml"; do
+    if jq -r '.permissions.deny[]' "$SETTINGS" 2>/dev/null | grep -q "Edit(${sc_file})"; then
+      pass "deny リスト: ${sc_file} の編集制限"
+    else
+      fail "deny リスト: ${sc_file} の編集制限がない"
+    fi
+  done
+
   # deny リストに必要なコマンドが含まれているか
   for cmd in "curl" "wget" "ssh" "scp" "nc" "sudo"; do
     if jq -r '.permissions.deny[]' "$SETTINGS" 2>/dev/null | grep -q "$cmd"; then
@@ -415,13 +476,22 @@ if [ -f "$SETTINGS" ]; then
     fail "MCP: enableAllProjectMcpServers が false でない"
   fi
 
-  # Hook が登録されているか
-  HOOK_COUNT=$(jq '[.hooks.PreToolUse[].hooks[], .hooks.PostToolUse[].hooks[], .hooks.Stop[].hooks[]] | length' "$SETTINGS" 2>/dev/null || echo 0)
-  if [ "$HOOK_COUNT" -ge 4 ]; then
+  # Hook が登録されているか（SessionStart / PermissionDenied を含む）
+  HOOK_COUNT=$(jq '[.hooks.PreToolUse[].hooks[], .hooks.PostToolUse[].hooks[], .hooks.SessionStart[].hooks[], .hooks.PermissionDenied[].hooks[], .hooks.Stop[].hooks[]] | length' "$SETTINGS" 2>/dev/null || echo 0)
+  if [ "$HOOK_COUNT" -ge 12 ]; then
     pass "Hooks: ${HOOK_COUNT} 個のフック登録済み"
   else
-    fail "Hooks: フック数が不足 ($HOOK_COUNT < 4)"
+    fail "Hooks: フック数が不足 ($HOOK_COUNT < 12)"
   fi
+
+  # 新規イベントフックの登録確認
+  for evt in "SessionStart" "PermissionDenied"; do
+    if jq -e ".hooks.${evt}" "$SETTINGS" >/dev/null 2>&1; then
+      pass "Hooks: ${evt} フック登録済み"
+    else
+      fail "Hooks: ${evt} フックが未登録"
+    fi
+  done
 
   # テレメトリ無効化
   TELEMETRY=$(jq -r '.env.CLAUDE_CODE_ENABLE_TELEMETRY // "1"' "$SETTINGS" 2>/dev/null)
@@ -435,7 +505,7 @@ else
 fi
 
 # Hook スクリプトの存在確認
-for hook in "block-dangerous.sh" "supply-chain-guard.sh" "supply-chain-audit.sh" "lint-on-save.sh" "langfuse_hook.py"; do
+for hook in "block-dangerous.sh" "supply-chain-guard.sh" "supply-chain-audit.sh" "lint-on-save.sh" "session-guard.sh" "permission-denied-log.sh" "langfuse_hook.py"; do
   if [ -f "${BASE_DIR}/hooks/$hook" ]; then
     pass "Hook ファイル: $hook 存在"
   else
