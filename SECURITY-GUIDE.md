@@ -181,6 +181,8 @@ init-firewall.sh の仕組み:
 - **`autoAllowBashIfSandboxed: true` の設計判断**: Sandboxで物理的に隔離しているので、その中では自動承認にして実行効率を上げる。deny ルールは自動承認より優先されるため、危険コマンドは引き続きブロックされる
 - **ファイアウォールとの2層構造**: ファイアウォール（全プロセス対象）+ Sandbox network（Claude sandbox内bashのみ対象）。両方を通過しないと外部通信できない
 - **localhostは自由**: `allowLocalBinding: true` + `allowAllUnixSockets: true` で、開発サーバー間のローカル通信は制限しない
+- **コンテナ側の前提条件**: bubblewrap は user/mount/pid/net namespace を作成するため、Docker デフォルト seccomp（`CAP_SYS_ADMIN` なしで `unshare` / namespace 付き `clone` / `mount` / `umount2` / `pivot_root` を拒否）のままでは起動できず、sandbox が無効になる。`docker-compose.yml` の `security_opt` で `.devcontainer/seccomp-bwrap.json`（Docker デフォルト + 上記 5 syscall のみ追加）を指定している。`/proc` のマスク（systempaths）は維持し、fresh `/proc` がマウントできない分は `enableWeakerNestedSandbox: true`（`--proc` の代わりに `/proc` を bind）で吸収する。`seccomp=unconfined` / `systempaths=unconfined` は使わない
+- **設定値 ≠ 実際の稼働**: `sandbox.enabled=true` は設定上の値にすぎない。コンテナ再作成後は Claude Code の `/sandbox` で実際に有効かを確認すること
 
 ### 第4層: Permissions + Hooks（操作制御）
 

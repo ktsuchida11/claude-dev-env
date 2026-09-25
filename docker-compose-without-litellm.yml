@@ -45,6 +45,9 @@ services:
     cap_add:
       - NET_ADMIN
       - NET_RAW
+    # Claude Code sandbox (bubblewrap) 用 seccomp（詳細は docker-compose.yml の同名サービス参照）
+    security_opt:
+      - seccomp=./.devcontainer/seccomp-bwrap.json
     mem_limit: ${DEV_MEM_LIMIT:-8g}
     memswap_limit: ${DEV_MEMSWAP_LIMIT:-8g}
     cpus: ${DEV_CPUS:-4.0}

@@ -85,9 +85,16 @@ services:
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    # seccomp は Docker デフォルトを使用（unconfined は撤回）
-    # NET_ADMIN / NET_RAW が付与されていれば iptables/ipset はデフォルト seccomp で動作する
+    # seccomp: Docker デフォルト + Claude Code sandbox (bubblewrap) 用の最小追加許可
+    # デフォルトは CAP_SYS_ADMIN なしでは unshare / namespace 付き clone / mount / pivot_root を拒否し、
+    # bwrap が起動できず sandbox が無効化される。unconfined は使わず、これら 5 syscall のみ追加許可する。
+    # 差分はファイル末尾の 1 ルールのみ（"comment" に由来を記載）。更新時は moby/profiles の
+    # default.json を取得し、同じルールを末尾に追加し直すこと。
+    # /proc のマスク（systempaths）は維持し、settings.json の enableWeakerNestedSandbox で対応する。
+    # NET_ADMIN / NET_RAW が付与されていれば iptables/ipset はこのプロファイルで動作する
     # 初期化に失敗する場合は ENABLE_FIREWALL=false で切り分け可能
+    security_opt:
+      - seccomp=./.devcontainer/seccomp-bwrap.json
     mem_limit: ${DEV_MEM_LIMIT:-8g}
     memswap_limit: ${DEV_MEMSWAP_LIMIT:-8g}
     cpus: ${DEV_CPUS:-4.0}
