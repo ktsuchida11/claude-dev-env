@@ -158,6 +158,7 @@
     "enabled": true,
     "autoAllowBashIfSandboxed": true,
     "failIfUnavailable": true,
+    "enableWeakerNestedSandbox": true,
     "allowUnsandboxedCommands": false,
     "excludedCommands": [
       "docker *",
