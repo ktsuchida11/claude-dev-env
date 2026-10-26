@@ -883,9 +883,9 @@ dev コンテナには以下の MCP (Model Context Protocol) サーバーがプ�
 
 | MCP | 取得元 | 現在の pin |
 | --- | --- | --- |
-| context7 | npm `@upstash/context7-mcp` | `2.1.8` |
-| playwright | npm `@playwright/mcp` | `0.0.70` |
-| serena | git `oraios/serena` | commit `1e6345cae95bd48201a614e5b7d1537df55c7533`（v1.1.2 相当）|
+| context7 | npm `@upstash/context7-mcp` | `4.4.2` |
+| playwright | npm `@playwright/mcp` | `0.0.83` |
+| serena | git `oraios/serena` | commit `4c4268f9c0adf8743a75e6dda2ef1fa635f34cc3`（v2.0.0 相当）|
 
 更新運用:
 
@@ -911,8 +911,8 @@ python3 .github/scripts/mcp-version-bump.py --print
 
 ```bash
 # MCP サーバーの動作確認（バージョンは mcp-servers.json と揃える）
-uvx --from git+https://github.com/oraios/serena@1e6345cae95bd48201a614e5b7d1537df55c7533 serena --help
-npx @playwright/mcp@0.0.70 --help
+uvx --from git+https://github.com/oraios/serena@4c4268f9c0adf8743a75e6dda2ef1fa635f34cc3 serena --help
+npx @playwright/mcp@0.0.83 --help
 
 # 言語サーバーの確認
 typescript-language-server --version
