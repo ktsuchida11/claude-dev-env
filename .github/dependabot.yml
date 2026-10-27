@@ -1,0 +1,24 @@
+# GitHub Actions のコミット SHA pin を自動更新する。
+# DevContainer の依存（Dockerfile / mcp-servers.json / docker-compose*.yml）は SHA256・署名・
+# README 連動の更新が必要なため Dependabot / Renovate では扱わず、
+# .github/workflows/devcontainer-version-update.yml が担当する（README「バージョン pin」参照）。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    # DevContainer 側と同じく公開から 7 日経過した版のみ採用する
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - dependencies

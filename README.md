@@ -909,6 +909,14 @@ dev コンテナには以下の MCP (Model Context Protocol) サーバーがプ�
 - **メジャー固定**: rtk 0.x（1.0 以降 BUSL-1.1 を含む） / serena 1.x（2.0 以降 GPL・REPL 既定） /
   typescript 6.x（7 は tsserver.js 非同梱で typescript-language-server が動かない） / maven 3.x
 - APT 署名鍵（Docker / Adoptium）の fingerprint は自動更新せず、変化を検知したら PR に警告のみ記載
+- ワークフロー内の GitHub Actions（コミット SHA pin）は `.github/dependabot.yml` により Dependabot が
+  同じく毎週月曜・7 日クールダウンで更新 PR を作成する
+
+Renovate / Dependabot に寄せない理由: どちらも Dockerfile の `ARG *_VERSION` は更新できるが、
+対応するアーキ別 SHA256 の再計算・公式 checksums との照合、`mcp-servers.json` / README の連動更新、
+メジャー固定の理由になっているライセンス確認（rtk）はできない
+（Renovate の `postUpgradeTasks` はセルフホスト時のみ利用可能）。
+バージョンだけ上がって SHA256 が古いままの PR はビルドが通らないため、DevContainer 側は専用スクリプトで扱う。
 
 ローカルで確認・適用する場合:
 
