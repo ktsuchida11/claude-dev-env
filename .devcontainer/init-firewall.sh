@@ -397,6 +397,13 @@ if [ -n "$HOST_DOCKER_IP" ] || [ -n "$HOST_DOCKER_IP6" ]; then
     echo "Allowing host.docker.internal (IPv4: ${HOST_DOCKER_IP:-none}, IPv6: ${HOST_DOCKER_IP6:-none}) on ports: $ALLOWED_PORTS..."
     IFS=',' read -ra PORTS <<< "$ALLOWED_PORTS"
     for port in "${PORTS[@]}"; do
+        # sudo env_keep 経由で渡されるため、範囲指定 (1:65535) 等を拒否し単一ポートのみ許可。
+        # exit すると DROP ポリシー適用前に終了し fail-open になるため、スキップで継続する
+        port="${port//[[:space:]]/}"
+        if ! [[ "$port" =~ ^[0-9]{1,5}$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+            echo "WARN: invalid port in FIREWALL_ALLOWED_PORTS, skipped: '$port'" >&2
+            continue
+        fi
         if [ -n "$HOST_DOCKER_IP" ]; then
             iptables -A OUTPUT -d "$HOST_DOCKER_IP" -p tcp --dport "$port" -j ACCEPT
             iptables -A INPUT -s "$HOST_DOCKER_IP" -p tcp --sport "$port" -m state --state ESTABLISHED -j ACCEPT

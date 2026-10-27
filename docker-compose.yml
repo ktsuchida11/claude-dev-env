@@ -6,9 +6,9 @@ services:
   docker-proxy:
     # SHA256 digest で pin（litellm と同様のサプライチェーン対策）
     # 更新手順:
-    #   docker pull tecnativa/docker-socket-proxy:v0.4.2 && \
-    #     docker inspect --format='{{index .RepoDigests 0}}' tecnativa/docker-socket-proxy:v0.4.2
-    image: tecnativa/docker-socket-proxy:v0.4.2@sha256:1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
+    #   docker pull tecnativa/docker-socket-proxy:v0.5.0 && \
+    #     docker inspect --format='{{index .RepoDigests 0}}' tecnativa/docker-socket-proxy:v0.5.0
+    image: tecnativa/docker-socket-proxy:v0.5.0@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -76,8 +76,6 @@ services:
       args:
         TZ: Asia/Tokyo
         CLAUDE_CODE_VERSION: "${CLAUDE_CODE_VERSION:-latest}"
-        GIT_DELTA_VERSION: "0.18.2"
-        ZSH_IN_DOCKER_VERSION: "1.2.0"
         ENABLE_JAVA: "${ENABLE_JAVA:-false}"
         # HTTP_PROXY: ${HTTP_PROXY:-}
         # HTTPS_PROXY: ${HTTPS_PROXY:-}
