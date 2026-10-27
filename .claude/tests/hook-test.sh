@@ -40,32 +40,50 @@ section() {
   echo "─────────────────────────────────────────"
 }
 
+# hook の判断を取得するヘルパー
+# 新形式（stdout の hookSpecificOutput.permissionDecision）と
+# 旧形式（exit 2 = block）の両方に対応する。
+# 戻り値（stdout）: "allow" | "deny" | "ask"
+get_decision() {
+  local hook_path="$1"
+  local command="$2"
+  local input out rc decision
+  input=$(jq -n --arg cmd "$command" '{"tool_input": {"command": $cmd}}')
+  out=$(echo "$input" | bash "$hook_path" 2>/dev/null)
+  rc=$?
+  decision="allow"
+  if [ -n "$out" ]; then
+    local d
+    d=$(echo "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+    [ -n "$d" ] && decision="$d"
+  fi
+  # 旧形式互換: exit 2 は deny 扱い
+  [ "$rc" -eq 2 ] && decision="deny"
+  echo "$decision"
+}
+
 # Hook を呼び出すヘルパー
-# 引数: $1=hook_path, $2=command, $3=expected_exit (0=allow, 2=block)
+# 引数: $1=hook_path, $2=command, $3=expected (0=allow, 2=deny, ask=確認強制)
 test_hook() {
   local hook_path="$1"
   local command="$2"
-  local expected_exit="$3"
+  local expected="$3"
   local description="$4"
 
-  local input
-  input=$(jq -n --arg cmd "$command" '{"tool_input": {"command": $cmd}}')
+  local want
+  case "$expected" in
+    0) want="allow" ;;
+    2) want="deny" ;;
+    *) want="$expected" ;;
+  esac
 
-  local exit_code=0
-  echo "$input" | bash "$hook_path" >/dev/null 2>/dev/null || exit_code=$?
+  local got
+  got=$(get_decision "$hook_path" "$command")
 
-  if [ "$exit_code" -eq "$expected_exit" ]; then
-    if [ "$expected_exit" -eq 2 ]; then
-      pass "BLOCK: $description"
-    else
-      pass "ALLOW: $description"
-    fi
+  if [ "$got" = "$want" ]; then
+    pass "$(echo "$want" | tr '[:lower:]' '[:upper:]'): $description"
   else
-    if [ "$expected_exit" -eq 2 ]; then
-      fail "BLOCK 期待だが ALLOW された: $description (exit=$exit_code)"
-    else
-      fail "ALLOW 期待だが BLOCK された: $description (exit=$exit_code)"
-    fi
+    fail "${want} 期待だが ${got} だった: $description"
   fi
 }
 
@@ -131,11 +149,26 @@ test_hook "$BLOCK_HOOK" "cat ~/.aws/credentials" 2 \
 test_hook "$BLOCK_HOOK" "cat /path/to/cert.pem" 2 \
   "cat *.pem ファイル"
 
-test_hook "$BLOCK_HOOK" "cat .env.example" 2 \
-  "cat .env.example: dotfile prefix なので block 対象"
+# .env.example / .env.enc / .env.sample は雛形・暗号化済みのため許可（仕様変更）
+test_hook "$BLOCK_HOOK" "cat .env.example" 0 \
+  "cat .env.example: 雛形は許可"
+
+test_hook "$BLOCK_HOOK" "grep KEY .env.enc" 0 \
+  "grep .env.enc: 暗号化済みは許可"
 
 test_hook "$BLOCK_HOOK" "cat src/.env.local" 2 \
-  "cat src/.env.local: パス区切り後の .env も block"                                                                                           
+  "cat src/.env.local: パス区切り後の .env も block"
+
+# 機密ファイルアクセスのコマンド非依存化（auto モード対応）
+# Bash(head *) 等の allow ルールが分類器を素通りするため、cat 以外も検査する
+test_hook "$BLOCK_HOOK" "head .env" 2 \
+  "head .env: cat 以外のコマンドでも block"
+
+test_hook "$BLOCK_HOOK" "grep API_KEY .env.production" 2 \
+  "grep .env.production: block"
+
+test_hook "$BLOCK_HOOK" "jq . /run/secrets/age-key" 2 \
+  "/run/secrets 配下: block"                                                                                           
 
 test_hook "$BLOCK_HOOK" "tee -a /workspace/.claude/settings.json /tmp/x" 2 \
   "tee -a settings.json (フラグ付き): block"  
@@ -194,8 +227,10 @@ test_hook "$BLOCK_HOOK" "ls -la" 0 \
 test_hook "$BLOCK_HOOK" "cat /workspace/src/index.ts" 0 \
   "cat（通常ファイル）"
 
-test_hook "$BLOCK_HOOK" "rm -rf /workspace/node_modules" 0 \
-  "rm -rf node_modules（/workspace 内は許可）"
+# rm は auto モード対応で ask（ユーザー確認強制）に変更。
+# sandbox 自動承認では確認プロンプトが出ないため hook が確認を復活させる
+test_hook "$BLOCK_HOOK" "rm -rf /workspace/node_modules" ask \
+  "rm -rf node_modules（/workspace 内はユーザー確認）"
 
 test_hook "$BLOCK_HOOK" "chmod 755 /workspace/script.sh" 0 \
   "chmod 755（適切な権限）"
@@ -274,23 +309,32 @@ echo -e "  ${YELLOW}--- STRICT_EGRESS_BLOCK=true でブロック動作 ---${NC}"
 # サブシェルで env を export する（pipe 先の bash に伝えるため）
 test_strict_block() {
   local command="$1"
-  local expected_exit="$2"
+  local expected="$2"
   local description="$3"
 
-  local input
+  local want
+  case "$expected" in
+    0) want="allow" ;;
+    2) want="deny" ;;
+    *) want="$expected" ;;
+  esac
+
+  local input out rc got
   input=$(jq -n --arg cmd "$command" '{"tool_input": {"command": $cmd}}')
+  out=$( export STRICT_EGRESS_BLOCK=true; echo "$input" | bash "$BLOCK_HOOK" 2>/dev/null )
+  rc=$?
+  got="allow"
+  if [ -n "$out" ]; then
+    local d
+    d=$(echo "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+    [ -n "$d" ] && got="$d"
+  fi
+  [ "$rc" -eq 2 ] && got="deny"
 
-  local exit_code=0
-  ( export STRICT_EGRESS_BLOCK=true; echo "$input" | bash "$BLOCK_HOOK" >/dev/null 2>/dev/null ) || exit_code=$?
-
-  if [ "$exit_code" -eq "$expected_exit" ]; then
-    if [ "$expected_exit" -eq 2 ]; then
-      pass "BLOCK: $description"
-    else
-      pass "ALLOW: $description"
-    fi
+  if [ "$got" = "$want" ]; then
+    pass "$(echo "$want" | tr '[:lower:]' '[:upper:]'): $description"
   else
-    fail "$description (exit=$exit_code, 期待=$expected_exit)"
+    fail "${want} 期待だが ${got} だった: $description"
   fi
 }
 
@@ -302,6 +346,94 @@ test_strict_block "node -e \"require('https')\"" 2 \
 
 test_strict_block "python -c 'print(1+1)'" 0 \
   "STRICT: python plain → ALLOW (検出対象外)"
+
+echo ""
+echo -e "  ${YELLOW}--- auto モード対応の新ゲート（deny）---${NC}"
+
+test_hook "$BLOCK_HOOK" "sudo iptables -F" 2 \
+  "sudo: 全面ブロック（firewall 改変防止）"
+
+test_hook "$BLOCK_HOOK" "sudo /usr/local/bin/init-firewall.sh" 2 \
+  "sudo init-firewall.sh: ブロック"
+
+test_hook "$BLOCK_HOOK" "cp evil.json .claude/settings.json" 2 \
+  "cp による settings.json 上書き"
+
+test_hook "$BLOCK_HOOK" "mv payload.sh /workspace/.claude/hooks/x.sh" 2 \
+  "mv による hooks 配置"
+
+test_hook "$BLOCK_HOOK" "tar -xf a.tar -C .claude/hooks" 2 \
+  "tar 展開による hooks 上書き"
+
+test_hook "$BLOCK_HOOK" "git push --force origin main" 2 \
+  "git push --force"
+
+test_hook "$BLOCK_HOOK" "git push origin +main" 2 \
+  "git push +refspec（強制 push）"
+
+test_hook "$BLOCK_HOOK" "git -c core.pager='sh -c id' log" 2 \
+  "git -c core.pager（コード実行）"
+
+test_hook "$BLOCK_HOOK" "git config core.fsmonitor /tmp/x.sh" 2 \
+  "git config core.fsmonitor（コード実行）"
+
+echo ""
+echo -e "  ${YELLOW}--- auto モード対応の新ゲート（ask: ユーザー確認強制）---${NC}"
+
+test_hook "$BLOCK_HOOK" "rm foo.txt" ask \
+  "素の rm はユーザー確認"
+
+test_hook "$BLOCK_HOOK" "rmdir build" ask \
+  "rmdir はユーザー確認"
+
+test_hook "$BLOCK_HOOK" "git reset --hard HEAD~1" ask \
+  "git reset --hard はユーザー確認"
+
+test_hook "$BLOCK_HOOK" "git clean -fdx" ask \
+  "git clean -f はユーザー確認"
+
+test_hook "$BLOCK_HOOK" "git checkout -- ." ask \
+  "git checkout -- はユーザー確認"
+
+test_hook "$BLOCK_HOOK" "git push --force-with-lease origin main" ask \
+  "git push --force-with-lease はユーザー確認"
+
+test_hook "$BLOCK_HOOK" "docker compose down -v" ask \
+  "docker compose down -v はユーザー確認"
+
+test_hook "$BLOCK_HOOK" "docker volume prune" ask \
+  "docker volume prune はユーザー確認"
+
+# ask ゲートの誤検知防止
+test_hook "$BLOCK_HOOK" "git checkout main" 0 \
+  "git checkout <branch> は許可"
+
+test_hook "$BLOCK_HOOK" "git checkout -b feature/x" 0 \
+  "git checkout -b は許可"
+
+test_hook "$BLOCK_HOOK" "docker compose down" 0 \
+  "docker compose down（-v なし）は許可"
+
+test_hook "$BLOCK_HOOK" "git push origin main" 0 \
+  "通常の git push は許可"
+
+echo ""
+echo -e "  ${YELLOW}--- JSON 出力形式（stdout に正式スキーマ）---${NC}"
+
+# deny が stdout に hookSpecificOutput 形式で出ること（stderr ではない）
+JSON_OUT=$(jq -n --arg cmd "sudo iptables -F" '{"tool_input": {"command": $cmd}}' | bash "$BLOCK_HOOK" 2>/dev/null)
+if echo "$JSON_OUT" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1; then
+  pass "deny 判断が stdout に hookSpecificOutput.permissionDecision 形式で出力される"
+else
+  fail "deny 判断が stdout の正式スキーマで出力されていない: $JSON_OUT"
+fi
+
+JSON_OUT=$(jq -n --arg cmd "rm foo.txt" '{"tool_input": {"command": $cmd}}' | bash "$BLOCK_HOOK" 2>/dev/null)
+if echo "$JSON_OUT" | jq -e '.hookSpecificOutput.permissionDecision == "ask" and (.hookSpecificOutput.permissionDecisionReason | length > 0)' >/dev/null 2>&1; then
+  pass "ask 判断が理由付きで stdout に出力される"
+else
+  fail "ask 判断が正式スキーマで出力されていない: $JSON_OUT"
+fi
 
 # =============================================================================
 # 2. supply-chain-guard.sh テスト
@@ -414,6 +546,21 @@ test_hook "$GUARD_HOOK" "npm install expresss" 0 \
   "typosquatting: ENABLE_SUPPLY_CHAIN_GUARD=false で許可"
 
 export ENABLE_SUPPLY_CHAIN_GUARD=true
+
+echo ""
+echo -e "  ${YELLOW}--- クールダウン迂回フラグ（ask: ユーザー確認強制）---${NC}"
+
+test_hook "$GUARD_HOOK" "npm install left-pad --min-release-age=0" ask \
+  "npm --min-release-age=0 はユーザー確認"
+
+test_hook "$GUARD_HOOK" "uv add requests --exclude-newer '0 days'" ask \
+  "uv --exclude-newer '0 days' はユーザー確認"
+
+test_hook "$GUARD_HOOK" "pip install --uploaded-prior-to=P0D requests" ask \
+  "pip --uploaded-prior-to=P0D はユーザー確認"
+
+test_hook "$GUARD_HOOK" "npm install left-pad --min-release-age=7" 0 \
+  "npm --min-release-age=7（通常のクールダウン値）は許可"
 # lockfile チェック専用セクションでは SKIP_LOCKFILE_CHECK を解除して有効化
 unset SKIP_LOCKFILE_CHECK
 
@@ -440,27 +587,32 @@ test_hook_in_dir() {
   local hook_path="$1"
   local cwd="$2"
   local command="$3"
-  local expected_exit="$4"
+  local expected="$4"
   local description="$5"
 
-  local input
+  local want
+  case "$expected" in
+    0) want="allow" ;;
+    2) want="deny" ;;
+    *) want="$expected" ;;
+  esac
+
+  local input out rc got
   input=$(jq -n --arg cmd "$command" '{"tool_input": {"command": $cmd}}')
+  out=$( cd "$cwd" && echo "$input" | bash "$hook_path" 2>/dev/null )
+  rc=$?
+  got="allow"
+  if [ -n "$out" ]; then
+    local d
+    d=$(echo "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+    [ -n "$d" ] && got="$d"
+  fi
+  [ "$rc" -eq 2 ] && got="deny"
 
-  local exit_code=0
-  ( cd "$cwd" && echo "$input" | bash "$hook_path" >/dev/null 2>/dev/null ) || exit_code=$?
-
-  if [ "$exit_code" -eq "$expected_exit" ]; then
-    if [ "$expected_exit" -eq 2 ]; then
-      pass "BLOCK: $description"
-    else
-      pass "ALLOW: $description"
-    fi
+  if [ "$got" = "$want" ]; then
+    pass "$(echo "$want" | tr '[:lower:]' '[:upper:]'): $description"
   else
-    if [ "$expected_exit" -eq 2 ]; then
-      fail "BLOCK 期待だが ALLOW された: $description (exit=$exit_code)"
-    else
-      fail "ALLOW 期待だが BLOCK された: $description (exit=$exit_code)"
-    fi
+    fail "${want} 期待だが ${got} だった: $description"
   fi
 }
 
@@ -775,26 +927,32 @@ test_pre_hook() {
     --argjson ti "$jq_input" \
     '{"tool_name": $tn, "tool_input": ($ti + {"file_path": $fp})}')
 
-  local exit_code=0
+  local want
+  case "$expected_exit" in
+    0) want="allow" ;;
+    2) want="deny" ;;
+    *) want="$expected_exit" ;;
+  esac
+
+  local out exit_code=0 got
   # サブシェルで env を export しないと pipe 先の bash には伝わらない
   if [ -n "$block_env" ]; then
-    ( export ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true; echo "$input" | bash "$DOCKERFILE_HOOK" --pre >/dev/null 2>/dev/null ) || exit_code=$?
+    out=$( export ENABLE_DOCKERFILE_COOLDOWN_BLOCK=true; echo "$input" | bash "$DOCKERFILE_HOOK" --pre 2>/dev/null ) || exit_code=$?
   else
-    ( unset ENABLE_DOCKERFILE_COOLDOWN_BLOCK; echo "$input" | bash "$DOCKERFILE_HOOK" --pre >/dev/null 2>/dev/null ) || exit_code=$?
+    out=$( unset ENABLE_DOCKERFILE_COOLDOWN_BLOCK; echo "$input" | bash "$DOCKERFILE_HOOK" --pre 2>/dev/null ) || exit_code=$?
   fi
+  got="allow"
+  if [ -n "$out" ]; then
+    local d
+    d=$(echo "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+    [ -n "$d" ] && got="$d"
+  fi
+  [ "$exit_code" -eq 2 ] && got="deny"
 
-  if [ "$exit_code" -eq "$expected_exit" ]; then
-    if [ "$expected_exit" -eq 2 ]; then
-      pass "BLOCK: $description"
-    else
-      pass "ALLOW: $description"
-    fi
+  if [ "$got" = "$want" ]; then
+    pass "$(echo "$want" | tr '[:lower:]' '[:upper:]'): $description"
   else
-    if [ "$expected_exit" -eq 2 ]; then
-      fail "BLOCK 期待だが exit=$exit_code: $description"
-    else
-      fail "ALLOW 期待だが exit=$exit_code: $description"
-    fi
+    fail "${want} 期待だが ${got} だった: $description"
   fi
 }
 
@@ -873,6 +1031,51 @@ fi
 
 # 後片付け
 rm -rf "$DF_TEST_DIR"
+
+# =============================================================================
+# 6. 新規 Hook（session-guard.sh / permission-denied-log.sh）テスト
+# =============================================================================
+section "6" "新規 Hook — session-guard / permission-denied-log"
+
+SG_HOOK="${BASE_DIR}/hooks/session-guard.sh"
+PDL_HOOK="${BASE_DIR}/hooks/permission-denied-log.sh"
+
+if [ -f "$PDL_HOOK" ]; then
+  # fail-open: 不正入力でも exit 0
+  exit_code=0
+  echo 'not-json' | CLAUDE_PROJECT_DIR="${TMPDIR:-/tmp}/pdl-test-$$" bash "$PDL_HOOK" >/dev/null 2>/dev/null || exit_code=$?
+  if [ "$exit_code" -eq 0 ]; then
+    pass "permission-denied-log: 不正入力でも exit 0（fail-open）"
+  else
+    fail "permission-denied-log: 不正入力で exit=$exit_code"
+  fi
+
+  # 正常入力が JSONL に記録される
+  PDL_DIR="${TMPDIR:-/tmp}/pdl-test-$$"
+  echo '{"tool_name":"Bash","denial":{"type":"classifier"}}' | CLAUDE_PROJECT_DIR="$PDL_DIR" bash "$PDL_HOOK" >/dev/null 2>/dev/null
+  if [ -f "$PDL_DIR/.claude/logs/permission-denied.jsonl" ] && \
+     jq -e '.tool_name == "Bash"' "$PDL_DIR/.claude/logs/permission-denied.jsonl" >/dev/null 2>&1; then
+    pass "permission-denied-log: 拒否イベントが JSONL に記録される"
+  else
+    fail "permission-denied-log: JSONL 記録が確認できない"
+  fi
+  rm -rf "$PDL_DIR"
+else
+  fail "permission-denied-log.sh が存在しない"
+fi
+
+if [ -f "$SG_HOOK" ]; then
+  # SessionStart: additionalContext を stdout に返し exit 0
+  SG_OUT=$(echo '{}' | CLAUDE_PROJECT_DIR="$BASE_DIR/.." bash "$SG_HOOK" 2>/dev/null)
+  exit_code=$?
+  if [ "$exit_code" -eq 0 ] && echo "$SG_OUT" | jq -e '.hookSpecificOutput.hookEventName == "SessionStart" and (.hookSpecificOutput.additionalContext | length > 0)' >/dev/null 2>&1; then
+    pass "session-guard: additionalContext を正式スキーマで出力"
+  else
+    fail "session-guard: 出力形式または exit code が不正 (exit=$exit_code)"
+  fi
+else
+  fail "session-guard.sh が存在しない"
+fi
 
 # =============================================================================
 # 結果サマリー

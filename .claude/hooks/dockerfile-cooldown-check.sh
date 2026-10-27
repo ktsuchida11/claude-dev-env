@@ -244,11 +244,14 @@ if [ -n "$HEADER_SHOWN" ]; then
   echo "" >&2
 fi
 
-# Pre モード + ブロック有効 + WARN レベル警告ありなら exit 2
+# Pre モード + ブロック有効 + WARN レベル警告ありなら deny
 # （INFO レベル：npm/pip 自体のアップグレード推奨等はブロックしない）
+# 正式スキーマ（hookSpecificOutput.permissionDecision）を stdout に出力する。
+# 旧形式の `{"decision":"block"}` + exit 2 は PreToolUse では deprecated。
 if [ "$HOOK_MODE" = "pre" ] && [ -n "$WARN_LEVEL_HIT" ] && [ "${ENABLE_DOCKERFILE_COOLDOWN_BLOCK:-false}" = "true" ]; then
-  echo "{\"decision\": \"block\", \"reason\": \"Blocked: Dockerfile lacks cooldown settings (npm min-release-age / pip --uploaded-prior-to / uv --exclude-newer). Add cooldown directives or set ENABLE_DOCKERFILE_COOLDOWN_BLOCK=false to skip.\"}" >&2
-  exit 2
+  jq -nc --arg r "Blocked: Dockerfile lacks cooldown settings (npm min-release-age / pip --uploaded-prior-to / uv --exclude-newer). Add cooldown directives or set ENABLE_DOCKERFILE_COOLDOWN_BLOCK=false to skip." \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  exit 0
 fi
 
 exit 0

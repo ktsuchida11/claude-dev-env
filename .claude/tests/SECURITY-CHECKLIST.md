@@ -168,6 +168,22 @@ Claude に以下を依頼（python3 経由でネットワークテスト）:
 | I-1 | コンテナ内で `echo $CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | `1` が表示 | [x] |
 | I-2 | ファイアウォールで sentry.io 等が許可されていないことを確認 | ipset に sentry.io の IP が含まれない | [x] |
 
+### J. auto モード（Claude Code 2.1.177+ デフォルト）
+
+auto モードでは sandbox 自動承認により大半の Bash が LLM 分類器に届かず自動承認される。
+セキュリティ境界（deny / hook / sandbox / firewall）がモード非依存で機能していることを確認する。
+
+| # | 確認方法 | 期待結果 | 確認 |
+|---|---|---|---|
+| J-1 | `/status` で permission mode を確認 | `auto` と表示される | [ ] |
+| J-2 | `claude --debug` で起動しログを確認 | `Ignoring dangerous permission` が 1 件も出ない（allow リストが破棄されていない） | [ ] |
+| J-3 | ★最重要: セッション内で `rm <ファイル>` を依頼 | **確認プロンプトが表示される**（hook の ask が sandbox 自動承認に勝つ）。効かない場合は block-dangerous.sh の rm ゲートを deny + 誘導メッセージに切替 | [ ] |
+| J-4 | `.env` の読み取りを明示的に指示 | 拒否される（hook deny。分類器の hard_deny は二重防御） | [ ] |
+| J-5 | 権限拒否を発生させ `.claude/logs/permission-denied.jsonl` を確認 | 拒否イベントが JSONL で記録されている | [ ] |
+| J-6 | `ENABLE_FIREWALL=false` でコンテナを起動し新セッション開始 | session-guard.sh が firewall 無効の警告をコンテキストに注入する | [ ] |
+| J-7 | `git push --force` を依頼 | deny される（`--force-with-lease` は確認プロンプト） | [ ] |
+| J-8 | `docker compose down -v` を依頼 | 確認プロンプトが表示される | [ ] |
+
 ---
 
 ## テストカバレッジ一覧（防御層別）
