@@ -884,36 +884,47 @@ dev コンテナには以下の MCP (Model Context Protocol) サーバーがプ�
 
 | MCP | 取得元 | 現在の pin |
 | --- | --- | --- |
-| context7 | npm `@upstash/context7-mcp` | `2.1.8` |
-| playwright | npm `@playwright/mcp` | `0.0.70` |
-| serena | git `oraios/serena` | commit `1e6345cae95bd48201a614e5b7d1537df55c7533`（v1.1.2 相当）|
+| context7 | npm `@upstash/context7-mcp` | `4.4.2` |
+| playwright | npm `@playwright/mcp` | `0.0.83` |
+| serena | git `oraios/serena` | commit `949a27ef1e5fda1a6e7b561e777bcece345c6ffd`（v1.7.0 相当）|
 
-更新運用:
+更新運用（MCP を含む DevContainer の全依存）:
 
-`.github/workflows/mcp-version-update.yml` が **毎週月曜 00:00 UTC**（09:00 JST）に走り、
-7 日クールダウンを満たす最新版を検出して自動 PR (`chore/mcp-auto-update`) を作成する。
-レビュー観点（CHANGELOG / 公開日 / `/mcp` 動作確認）を確認したらマージするだけで反映完了。
+`.github/workflows/devcontainer-version-update.yml` が **毎週月曜 00:00 UTC**（09:00 JST）に走り、
+**公開から 7 日以上経過した最新安定版**を検出して pin を更新し、イメージのビルド検証結果を添えて
+自動 PR (`chore/devcontainer-auto-update`) を作成する（ビルド失敗時は Draft PR）。
+レビュー観点（リリースノート / ⚠️ 要確認 / `/mcp` 動作確認 / arm64 ビルド）を確認したらマージする。
 
-手動で走らせる場合: GitHub Actions の `MCP version auto-update` を `Run workflow` で起動。
+手動で走らせる場合: GitHub Actions の `DevContainer dependency auto-update` を `Run workflow` で起動。
 
-ローカルで pin 候補を確認するだけなら:
+| 対象 | pin 方式 | 自動 PR での検証 |
+| --- | --- | --- |
+| Node ベースイメージ / docker-socket-proxy | タグ + digest | Docker Hub から digest 取得（Node は同一メジャー内。セキュリティリリースはクールダウン例外） |
+| Terraform / AWS CLI / Session Manager plugin | バージョン + PGP 署名 | 署名ファイルの公開を確認（署名検証はビルド時） |
+| tflint / terraform-docs / trivy / gitleaks / sops / rtk | バージョン + アーキ別 SHA256 | 実ファイルの SHA256 を公式 checksums と照合してから書き込む |
+| git-delta / zsh-in-docker | バージョン + SHA256 | 公式 checksums 無しのため初回取得時の SHA256 を固定 |
+| pip / uv / npm（MCP・LSP）/ Maven / Gradle / jdtls | バージョン | 公式 checksum の公開を確認（Maven / Gradle / jdtls） |
+| serena | commit SHA | リリースタグのコミットへ更新 |
+
+- バージョンは**上げる方向にのみ**更新する（手動でクールダウン例外を適用した版は戻さない）
+- **メジャー固定**: rtk 0.x（1.0 以降 BUSL-1.1 を含む） / serena 1.x（2.0 以降 GPL・REPL 既定） /
+  typescript 6.x（7 は tsserver.js 非同梱で typescript-language-server が動かない） / maven 3.x
+- APT 署名鍵（Docker / Adoptium）の fingerprint は自動更新せず、変化を検知したら PR に警告のみ記載
+
+ローカルで確認・適用する場合:
 
 ```bash
-python3 .github/scripts/mcp-version-bump.py --print
+python3 .github/scripts/devcontainer-version-bump.py --dry-run         # 更新候補の表示のみ
+python3 .github/scripts/devcontainer-version-bump.py --only serena     # 特定の依存のみ適用
+python3 .github/scripts/devcontainer-version-bump.py                   # 全依存を適用
 ```
-
-更新対象ファイル（自動 PR が変更）:
-
-- `.devcontainer/mcp-servers.json` の `args` 内バージョン文字列
-- `.devcontainer/Dockerfile` の `ARG CONTEXT7_MCP_VERSION` / `ARG PLAYWRIGHT_MCP_VERSION`
-- 本 README の pin テーブルおよび確認用コマンド例
 
 ### 確認方法
 
 ```bash
 # MCP サーバーの動作確認（バージョンは mcp-servers.json と揃える）
-uvx --from git+https://github.com/oraios/serena@1e6345cae95bd48201a614e5b7d1537df55c7533 serena --help
-npx @playwright/mcp@0.0.70 --help
+uvx --from git+https://github.com/oraios/serena@949a27ef1e5fda1a6e7b561e777bcece345c6ffd serena --help
+npx @playwright/mcp@0.0.83 --help
 
 # 言語サーバーの確認
 typescript-language-server --version
