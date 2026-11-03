@@ -1,0 +1,29 @@
+# Trivy の除外設定（.github/actions/trivy-scan から --ignorefile で参照）
+#
+# 修正版が無い / 実行経路上で到達しない等の理由でリスクを受容する場合のみ追加する。
+# 必ず statement（受容理由）と expired_at（再評価期限）を書き、期限切れになったら見直すこと。
+#
+# 例:
+# vulnerabilities:
+#   - id: CVE-2026-00000
+#     paths:
+#       - usr/local/bin/example
+#     statement: 該当関数を呼ばない用途のみ。上流の修正版公開待ち（https://github.com/...）
+#     expired_at: 2026-12-31
+#
+# misconfigurations:
+#   - id: DS-0002
+#     statement: ...
+#     expired_at: 2026-12-31
+
+vulnerabilities:
+  # gitleaks v8.30.1（2026-03-21 公開、2026-11 時点で上流の最新）は Go 1.24.11 でビルドされており修正版が無い。
+  # 影響は Config.Clone / GetConfigForClient で ClientCAs・RootCAs を書き換えた TLS セッション再開時のみで、
+  # ローカルファイルを走査する gitleaks の用途では到達しない。上流の新版が出れば週次の自動更新で解消する。
+  - id: CVE-2025-68121
+    paths:
+      - usr/local/bin/gitleaks
+    statement: gitleaks 上流に修正版リリースなし。TLS セッション再開の経路を使わない用途のため受容（2026-11-03）
+    expired_at: 2027-02-03
+
+misconfigurations: []

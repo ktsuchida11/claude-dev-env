@@ -1,0 +1,81 @@
+name: DevContainer Trivy scan
+description: >-
+  Dockerfile で pin している Trivy を SHA256 照合してから導入し、DevContainer イメージの脆弱性と
+  Dockerfile / compose の設定ミスをスキャンして Markdown レポートを作成する。
+  aquasecurity/trivy-action・setup-trivy は 2026-03 に侵害された（CVE-2026-33634）ため使わない。
+
+inputs:
+  image:
+    description: スキャンするローカルイメージ名
+    required: true
+  output-dir:
+    description: JSON / Markdown の出力先
+    required: true
+  title:
+    description: レポートの見出し
+    required: false
+    default: DevContainer 脆弱性スキャン結果
+
+outputs:
+  fixable_critical:
+    description: 修正版のある CRITICAL の件数
+    value: ${{ steps.report.outputs.fixable_critical }}
+  fixable_high:
+    description: 修正版のある HIGH の件数
+    value: ${{ steps.report.outputs.fixable_high }}
+  misconfig:
+    description: CRITICAL / HIGH の設定ミスの件数
+    value: ${{ steps.report.outputs.misconfig }}
+  fingerprint:
+    description: 修正版のある CRITICAL / HIGH の集合の指紋（無ければ空）
+    value: ${{ steps.report.outputs.fingerprint }}
+  report:
+    description: Markdown レポートのパス
+    value: ${{ inputs.output-dir }}/report.md
+
+runs:
+  using: composite
+  steps:
+    # バージョンと SHA256 は Dockerfile を唯一の定義元とし、devcontainer-version-bump.py が更新する
+    - name: Install pinned Trivy
+      shell: bash
+      run: |
+        set -euo pipefail
+        DF=.devcontainer/Dockerfile
+        V=$(sed -n 's/^ARG TRIVY_VERSION=//p' "$DF")
+        SHA=$(sed -n 's/^ARG TRIVY_SHA256_AMD64=//p' "$DF")
+        test -n "$V" && test -n "$SHA"
+        TGZ="trivy_${V}_Linux-64bit.tar.gz"
+        mkdir -p "$RUNNER_TEMP/trivy-bin"
+        cd "$RUNNER_TEMP"
+        curl -fsSLo "$TGZ" "https://github.com/aquasecurity/trivy/releases/download/v${V}/${TGZ}"
+        echo "${SHA}  ${TGZ}" | sha256sum -c -
+        tar -xzf "$TGZ" -C "$RUNNER_TEMP/trivy-bin" trivy
+        rm "$TGZ"
+        echo "$RUNNER_TEMP/trivy-bin" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/trivy-bin/trivy" --version
+
+    - name: Scan image and configuration
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        OUT: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$OUT"
+        # 重大度の絞り込み・修正版有無の判定はレポート側で行うため、ここでは全件を JSON で出力する
+        trivy image --scanners vuln --format json --output "$OUT/image.json" \
+          --ignorefile .devcontainer/.trivyignore.yaml --timeout 30m "$IMAGE"
+        trivy config --format json --output "$OUT/config.json" \
+          --ignorefile .devcontainer/.trivyignore.yaml .devcontainer
+
+    - name: Build report
+      id: report
+      shell: bash
+      env:
+        OUT: ${{ inputs.output-dir }}
+        TITLE: ${{ inputs.title }}
+      run: |
+        python3 .github/scripts/devcontainer-vuln-report.py \
+          --image "$OUT/image.json" --config "$OUT/config.json" \
+          --ignorefile .devcontainer/.trivyignore.yaml --title "$TITLE" --summary "$OUT/report.md"
