@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """DevContainer dependency auto-bump.
 
-.devcontainer/Dockerfile / mcp-servers.json / docker-compose*.yml / README.md で
+.devcontainer/Dockerfile / mcp-servers.json / docker-compose*.yml / litellm/Dockerfile / README.md で
 pin している依存を「公開から COOLDOWN_DAYS 日以上経過した最新安定版」へ更新する。
 
 - バージョンは上げる方向にのみ更新する（手動でクールダウン例外を適用した版を戻さない）
@@ -49,11 +49,19 @@ MAJOR_PINS = {
     "maven": 3,  # ダウンロード URL が maven-3/ 配下のため
 }
 
+# 上限バージョン（これを超える版は自動更新しない）。安全性を確認できたら手動で引き上げる
+MAX_VERSIONS = {
+    # 2026-10-21 にリリースパイプラインが侵害され悪性 1.107.0 が PyPI / Docker に公開された。
+    # 1.106.2 は侵害直前の最後の安全版（公式事後報告）。以降の版は事後報告で安全性を確認してから引き上げる
+    "litellm": ("1.106.2", "2026-10-21 のリリースパイプライン侵害以降の版は安全性の確認待ち"),
+}
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKERFILE = REPO_ROOT / ".devcontainer" / "Dockerfile"
 MCP_SERVERS_JSON = REPO_ROOT / ".devcontainer" / "mcp-servers.json"
 README = REPO_ROOT / "README.md"
 COMPOSE_FILES = [REPO_ROOT / "docker-compose.yml", REPO_ROOT / "docker-compose-without-litellm.yml"]
+LITELLM_DOCKERFILE = REPO_ROOT / "litellm" / "Dockerfile"
 
 NOW = datetime.now(timezone.utc)
 BOUNDARY = NOW - timedelta(days=COOLDOWN_DAYS)
@@ -153,7 +161,7 @@ class Release:
     assets: list[str]
 
 
-def gh_latest(repo: str, major: int | None = None) -> Release:
+def gh_latest(repo: str, major: int | None = None, ceiling: str | None = None) -> Release:
     rels = get_json(f"https://api.github.com/repos/{repo}/releases?per_page=100")
     cands = []
     for r in rels:
@@ -165,11 +173,13 @@ def gh_latest(repo: str, major: int | None = None) -> Release:
         v = m.group(1)
         if major is not None and vtuple(v)[0] != major:
             continue
+        if ceiling is not None and newer(v, ceiling):
+            continue
         d = parse_iso(r["published_at"])
         if eligible(d):
             cands.append(Release(v, r["tag_name"], d, [a["name"] for a in r["assets"]]))
     if not cands:
-        raise BumpError(f"{repo}: no stable release satisfies cooldown (major={major})")
+        raise BumpError(f"{repo}: no stable release satisfies cooldown (major={major}, ceiling={ceiling})")
     return max(cands, key=lambda c: vtuple(c.version))
 
 
@@ -207,6 +217,15 @@ def docker_hub_digest(repo: str, tag: str) -> str:
     token = get_json(
         f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull"
     )["token"]
+    return registry_digest("https://registry-1.docker.io", token, repo, tag)
+
+
+def ghcr_digest(repo: str, tag: str) -> str:
+    token = get_json(f"https://ghcr.io/token?service=ghcr.io&scope=repository:{repo}:pull")["token"]
+    return registry_digest("https://ghcr.io", token, repo, tag)
+
+
+def registry_digest(registry: str, token: str, repo: str, tag: str) -> str:
     accept = ", ".join(
         [
             "application/vnd.oci.image.index.v1+json",
@@ -217,12 +236,12 @@ def docker_hub_digest(repo: str, tag: str) -> str:
     )
     try:
         _, h = http(
-            f"https://registry-1.docker.io/v2/{repo}/manifests/{tag}",
+            f"{registry}/v2/{repo}/manifests/{tag}",
             method="HEAD",
             headers={"Authorization": f"Bearer {token}", "Accept": accept},
         )
     except urllib.error.HTTPError as e:
-        raise BumpError(f"docker {repo}:{tag}: manifest not available ({e.code})") from e
+        raise BumpError(f"{registry} {repo}:{tag}: manifest not available ({e.code})") from e
     return h["docker-content-digest"]
 
 
@@ -596,6 +615,35 @@ def bump_socket_proxy(files: Files) -> Change | None:
     return Change("docker-socket-proxy", cur_tag, rel.tag, [f"released {day(rel.date)}", f"digest `{digest[:19]}…`"])
 
 
+def bump_litellm(files: Files) -> Change | None:
+    """LiteLLM プロキシのベースイメージ。GitHub の正式リリース（prerelease / -stable / -rc / -dev 以外）に追従する。"""
+    pat = re.compile(r"^FROM ghcr\.io/berriai/litellm:(v\d+\.\d+\.\d+)@(sha256:[0-9a-f]{64})$", re.M)
+    df = files.read(LITELLM_DOCKERFILE)
+    m = pat.search(df)
+    if not m:
+        raise BumpError("FROM ghcr.io/berriai/litellm:v<ver>@sha256:<digest> not found in litellm/Dockerfile")
+    cur_tag, cur_digest = m.groups()
+    rel = gh_latest("BerriAI/litellm")
+    ceiling, reason = MAX_VERSIONS["litellm"]
+    if newer(rel.version, ceiling):
+        WARNINGS.append(
+            f"litellm: 上限 v{ceiling} を超える {rel.tag} が公開されています（{reason}）。"
+            "安全性を確認できたら devcontainer-version-bump.py の MAX_VERSIONS を引き上げてください。"
+        )
+        rel = gh_latest("BerriAI/litellm", ceiling=ceiling)
+    if not newer(rel.version, cur_tag):
+        # 同一タグの再ビルド（ベースイメージのセキュリティ更新等）に追従する
+        digest = ghcr_digest("berriai/litellm", cur_tag)
+        if digest == cur_digest:
+            return None
+        files.write(LITELLM_DOCKERFILE, pat.sub(f"FROM ghcr.io/berriai/litellm:{cur_tag}@{digest}", df))
+        return Change("litellm", cur_tag, cur_tag, ["同一タグの再ビルドに追従（digest のみ更新）", f"digest `{digest[:19]}…`"])
+    digest = ghcr_digest("berriai/litellm", rel.tag)
+    files.write(LITELLM_DOCKERFILE, pat.sub(f"FROM ghcr.io/berriai/litellm:{rel.tag}@{digest}", df))
+    notes = [f"released {day(rel.date)}", f"digest `{digest[:19]}…`", "config.yaml の互換性をリリースノートで確認"]
+    return Change("litellm", cur_tag, rel.tag, notes)
+
+
 def check_apt_keys(files: Files) -> None:
     """APT 署名鍵の fingerprint 変化を検知する（自動更新はしない）。"""
     if not shutil.which("gpg"):
@@ -673,6 +721,7 @@ COMPONENTS: list[tuple[str, Callable[[Files], Change | None]]] = [
     ("pyright", npm_arg("pyright", "pyright", "PYRIGHT_VERSION")),
     ("serena", bump_serena),
     ("docker-socket-proxy", bump_socket_proxy),
+    ("litellm", bump_litellm),
     ("apt-keys", check_apt_keys),
 ]
 
@@ -706,6 +755,10 @@ def render_summary(changes: list[Change], errors: list[tuple[str, str]]) -> str:
         "",
         "rtk 0.x（1.0 以降 BUSL-1.1） / serena 1.x（2.0 以降 GPL・REPL 既定） / "
         "typescript 6.x（7 は tsserver.js 非同梱） / maven 3.x",
+        "",
+        "### 上限バージョン固定中",
+        "",
+        *[f"- {name}: v{ver} まで（{why}）" for name, (ver, why) in MAX_VERSIONS.items()],
     ]
     return "\n".join(lines) + "\n"
 

@@ -15,6 +15,14 @@ inputs:
     description: レポートの見出し
     required: false
     default: DevContainer 脆弱性スキャン結果
+  config-dir:
+    description: trivy config で設定ミスをスキャンするディレクトリ
+    required: false
+    default: .devcontainer
+  remedy:
+    description: 全件の対処方法を bump スクリプトの依存名に固定する（単一ベースイメージの LiteLLM 等。空なら自動判定）
+    required: false
+    default: ''
 
 outputs:
   fixable_critical:
@@ -60,6 +68,7 @@ runs:
       env:
         IMAGE: ${{ inputs.image }}
         OUT: ${{ inputs.output-dir }}
+        CONFIG_DIR: ${{ inputs.config-dir }}
       run: |
         set -euo pipefail
         mkdir -p "$OUT"
@@ -67,7 +76,7 @@ runs:
         trivy image --scanners vuln --format json --output "$OUT/image.json" \
           --ignorefile .devcontainer/.trivyignore.yaml --timeout 30m "$IMAGE"
         trivy config --format json --output "$OUT/config.json" \
-          --ignorefile .devcontainer/.trivyignore.yaml .devcontainer
+          --ignorefile .devcontainer/.trivyignore.yaml "$CONFIG_DIR"
 
     - name: Build report
       id: report
@@ -75,7 +84,9 @@ runs:
       env:
         OUT: ${{ inputs.output-dir }}
         TITLE: ${{ inputs.title }}
+        REMEDY: ${{ inputs.remedy }}
       run: |
         python3 .github/scripts/devcontainer-vuln-report.py \
           --image "$OUT/image.json" --config "$OUT/config.json" \
-          --ignorefile .devcontainer/.trivyignore.yaml --title "$TITLE" --summary "$OUT/report.md"
+          --ignorefile .devcontainer/.trivyignore.yaml --title "$TITLE" --summary "$OUT/report.md" \
+          ${REMEDY:+--remedy "$REMEDY"}

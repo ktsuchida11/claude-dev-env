@@ -6,8 +6,8 @@
 # 環境変数には秘密鍵を残さない（docker cp → 復号 → 即削除）。
 #
 # 使い方:
-#   bash scripts/start-devcontainer.sh                    # LiteLLM あり
-#   bash scripts/start-devcontainer.sh --without-litellm  # LiteLLM なし
+#   bash scripts/start-devcontainer.sh                    # LiteLLM は .env の COMPOSE_PROFILES=litellm 指定時のみ起動
+#   bash scripts/start-devcontainer.sh --without-litellm  # LiteLLM を含まない compose ファイルで起動
 # =============================================================================
 
 set -euo pipefail

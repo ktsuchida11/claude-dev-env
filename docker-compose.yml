@@ -37,7 +37,11 @@ services:
     cpus: 0.2
     pids_limit: 64
 
+  # LiteLLM は既定では起動しない（opt-in）。使う場合は .env に LITELLM_MASTER_KEY と
+  # COMPOSE_PROFILES=litellm を設定する。LITELLM_MASTER_KEY が空だと Proxy が認証なしで
+  # 動くため、litellm/require-master-key.sh が起動を拒否する。
   litellm:
+    profiles: ["litellm"]
     build:
       context: ./litellm
     ports:
@@ -104,15 +108,18 @@ services:
       retries: 5
       start_period: 30s
     depends_on:
+      # LiteLLM は opt-in のため、起動していなくても dev は起動する
       litellm:
         condition: service_healthy
+        required: false
       docker-proxy:
         condition: service_started
     environment:
-      - LITELLM_BASE_URL=http://litellm:4000
+      # LITELLM_MASTER_KEY 未設定時は空にし、claude-litellm から LiteLLM へ接続させない
+      - LITELLM_BASE_URL=${LITELLM_MASTER_KEY:+http://litellm:4000}
       # docker / docker compose は docker-proxy 経由で実行（socket 直接マウントを廃止）
       - DOCKER_HOST=tcp://docker-proxy:2375
-      - LITELLM_AUTH_TOKEN=${LITELLM_MASTER_KEY}
+      - LITELLM_AUTH_TOKEN=${LITELLM_MASTER_KEY:-}
       - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
       - NODE_OPTIONS=--max-old-space-size=4096
       - CLAUDE_CONFIG_DIR=/home/node/.claude

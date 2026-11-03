@@ -59,6 +59,7 @@ jobs:
             --build-arg TZ=Asia/Tokyo \
             -t devcontainer-bump-check \
             .devcontainer 2>&1 | tee "$RUNNER_TEMP/build.log"
+          docker build -t litellm-bump-check litellm 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       # 更新後のイメージに修正版のある脆弱性が残っていないかを確認し、結果を PR 本文に載せる
       # （GITHUB_TOKEN で作成した PR では devcontainer-vuln-scan の pull_request トリガーが動かないため）
@@ -72,6 +73,18 @@ jobs:
           output-dir: ${{ runner.temp }}/trivy
           title: 脆弱性スキャン（更新後）
 
+      - name: Scan updated LiteLLM image
+        id: scan_litellm
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/trivy-scan
+        with:
+          image: litellm-bump-check
+          output-dir: ${{ runner.temp }}/trivy-litellm
+          title: LiteLLM 脆弱性スキャン（更新後）
+          config-dir: litellm
+          remedy: litellm
+
       - name: Commit and push to update branch
         if: steps.bump.outputs.changed == 'true'
         env:
@@ -80,7 +93,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
-          git add .devcontainer README.md docker-compose.yml docker-compose-without-litellm.yml
+          git add .devcontainer README.md docker-compose.yml docker-compose-without-litellm.yml litellm/Dockerfile
           git commit -m "chore(devcontainer): auto-update pinned dependencies" -m "Updated: ${UPDATED}"
           git push --force-with-lease origin "$BRANCH"
 
@@ -90,6 +103,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           SCAN_OUTCOME: ${{ steps.scan.outcome }}
+          SCAN_LITELLM_OUTCOME: ${{ steps.scan_litellm.outcome }}
           FIXABLE_CRITICAL: ${{ steps.scan.outputs.fixable_critical }}
           TRIGGER: ${{ inputs.trigger }}
         run: |
@@ -101,7 +115,7 @@ jobs:
               echo "起動元: ${TRIGGER}"
             fi
             echo
-            echo "### ビルド検証 (linux/amd64, ENABLE_JAVA=true)"
+            echo "### ビルド検証 (linux/amd64, DevContainer ENABLE_JAVA=true + LiteLLM)"
             echo
             if [ "$BUILD_OUTCOME" = "success" ]; then
               echo "✅ \`docker build\` 成功"
@@ -124,6 +138,10 @@ jobs:
               echo "### 脆弱性スキャン（更新後）"
               echo
               echo "⚠️ スキャンを実行できませんでした（ビルド失敗またはスキャンエラー）。ワークフローログを確認してください。"
+            fi
+            if [ "$SCAN_LITELLM_OUTCOME" = "success" ]; then
+              echo
+              sed 's/^## /### /; s/^### 修正版/#### 修正版/; s/^### 設定ミス/#### 設定ミス/' "$RUNNER_TEMP/trivy-litellm/report.md"
             fi
             echo
             echo "## レビュー観点"
