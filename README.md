@@ -250,7 +250,7 @@ VS Code 拡張（自動インストール）:
 
 | 項目 | 内容 |
 | --- | --- |
-| ベースイメージ | `ghcr.io/berriai/litellm:main-latest` |
+| ベースイメージ | `ghcr.io/berriai/litellm:v1.99.4`（正式リリースのタグ + digest 固定。自動更新 PR で更新） |
 | ポート | 4000 |
 | 役割 | `claude-litellm` エイリアスで利用。OpenAI / Anthropic API への変換プロキシ |
 
@@ -899,6 +899,7 @@ dev コンテナには以下の MCP (Model Context Protocol) サーバーがプ�
 | 対象 | pin 方式 | 自動 PR での検証 |
 | --- | --- | --- |
 | Node ベースイメージ / docker-socket-proxy | タグ + digest | Docker Hub から digest 取得（Node は同一メジャー内。セキュリティリリースはクールダウン例外） |
+| LiteLLM (`litellm/Dockerfile`) | タグ + digest | GitHub の正式リリース（prerelease / `-stable` / `-rc` / `-dev` 以外）に追従し ghcr.io から digest 取得。`config.yaml` の互換性はリリースノートで確認 |
 | Terraform / AWS CLI / Session Manager plugin | バージョン + PGP 署名 | 署名ファイルの公開を確認（署名検証はビルド時） |
 | tflint / terraform-docs / trivy / gitleaks / sops / rtk | バージョン + アーキ別 SHA256 | 実ファイルの SHA256 を公式 checksums と照合してから書き込む |
 | git-delta / zsh-in-docker | バージョン + SHA256 | 公式 checksums 無しのため初回取得時の SHA256 を固定 |
@@ -926,18 +927,18 @@ python3 .github/scripts/devcontainer-version-bump.py --only serena     # 特定�
 python3 .github/scripts/devcontainer-version-bump.py                   # 全依存を適用
 ```
 
-- Node ベースイメージ / docker-socket-proxy は、バージョンが同じでも同一タグが再ビルドされて digest が
+- Node ベースイメージ / docker-socket-proxy / LiteLLM は、バージョンが同じでも同一タグが再ビルドされて digest が
   変わっていれば追従する（Debian のセキュリティ更新を取り込むため）
 
 ### 脆弱性スキャン（Trivy）
 
-`.github/workflows/devcontainer-vuln-scan.yml` が DevContainer イメージ（`ENABLE_JAVA=true` のフル構成）を
-ビルドし、Trivy でイメージの脆弱性と Dockerfile の設定ミスをスキャンする。
+`.github/workflows/devcontainer-vuln-scan.yml` が DevContainer イメージ（`ENABLE_JAVA=true` のフル構成）と
+LiteLLM イメージをビルドし、Trivy でイメージの脆弱性と Dockerfile の設定ミスをスキャンする。
 
 | 起動 | 動作 |
 | --- | --- |
 | 毎日 07:00 JST / 手動実行 | 修正版のある CRITICAL / HIGH があればラベル `devcontainer-vulnerability` の Issue を作成・更新し、検出内容が前回から変わっていれば `DevContainer dependency auto-update` を起動する。解消されると Issue を自動クローズ |
-| `.devcontainer/**` を変更する PR | 修正版のある CRITICAL があれば失敗させる |
+| `.devcontainer/**` / `litellm/**` を変更する PR | DevContainer に修正版のある CRITICAL があれば失敗させる（LiteLLM は上流イメージの更新以外に対処手段がないためレポートのみ） |
 | 自動更新 PR | 更新後のイメージをスキャンし、結果を PR 本文に記載（`GITHUB_TOKEN` で作成した PR では PR トリガーが動かないため） |
 
 - Trivy は `aquasecurity/trivy-action` / `setup-trivy` を使わず（2026-03 に侵害）、Dockerfile の

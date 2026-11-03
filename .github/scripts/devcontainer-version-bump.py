@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """DevContainer dependency auto-bump.
 
-.devcontainer/Dockerfile / mcp-servers.json / docker-compose*.yml / README.md で
+.devcontainer/Dockerfile / mcp-servers.json / docker-compose*.yml / litellm/Dockerfile / README.md で
 pin している依存を「公開から COOLDOWN_DAYS 日以上経過した最新安定版」へ更新する。
 
 - バージョンは上げる方向にのみ更新する（手動でクールダウン例外を適用した版を戻さない）
@@ -54,6 +54,7 @@ DOCKERFILE = REPO_ROOT / ".devcontainer" / "Dockerfile"
 MCP_SERVERS_JSON = REPO_ROOT / ".devcontainer" / "mcp-servers.json"
 README = REPO_ROOT / "README.md"
 COMPOSE_FILES = [REPO_ROOT / "docker-compose.yml", REPO_ROOT / "docker-compose-without-litellm.yml"]
+LITELLM_DOCKERFILE = REPO_ROOT / "litellm" / "Dockerfile"
 
 NOW = datetime.now(timezone.utc)
 BOUNDARY = NOW - timedelta(days=COOLDOWN_DAYS)
@@ -207,6 +208,15 @@ def docker_hub_digest(repo: str, tag: str) -> str:
     token = get_json(
         f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull"
     )["token"]
+    return registry_digest("https://registry-1.docker.io", token, repo, tag)
+
+
+def ghcr_digest(repo: str, tag: str) -> str:
+    token = get_json(f"https://ghcr.io/token?service=ghcr.io&scope=repository:{repo}:pull")["token"]
+    return registry_digest("https://ghcr.io", token, repo, tag)
+
+
+def registry_digest(registry: str, token: str, repo: str, tag: str) -> str:
     accept = ", ".join(
         [
             "application/vnd.oci.image.index.v1+json",
@@ -217,12 +227,12 @@ def docker_hub_digest(repo: str, tag: str) -> str:
     )
     try:
         _, h = http(
-            f"https://registry-1.docker.io/v2/{repo}/manifests/{tag}",
+            f"{registry}/v2/{repo}/manifests/{tag}",
             method="HEAD",
             headers={"Authorization": f"Bearer {token}", "Accept": accept},
         )
     except urllib.error.HTTPError as e:
-        raise BumpError(f"docker {repo}:{tag}: manifest not available ({e.code})") from e
+        raise BumpError(f"{registry} {repo}:{tag}: manifest not available ({e.code})") from e
     return h["docker-content-digest"]
 
 
@@ -593,6 +603,28 @@ def bump_socket_proxy(files: Files) -> Change | None:
     return Change("docker-socket-proxy", cur_tag, rel.tag, [f"released {day(rel.date)}", f"digest `{digest[:19]}…`"])
 
 
+def bump_litellm(files: Files) -> Change | None:
+    """LiteLLM プロキシのベースイメージ。GitHub の正式リリース（prerelease / -stable / -rc / -dev 以外）に追従する。"""
+    pat = re.compile(r"^FROM ghcr\.io/berriai/litellm:(v\d+\.\d+\.\d+)@(sha256:[0-9a-f]{64})$", re.M)
+    df = files.read(LITELLM_DOCKERFILE)
+    m = pat.search(df)
+    if not m:
+        raise BumpError("FROM ghcr.io/berriai/litellm:v<ver>@sha256:<digest> not found in litellm/Dockerfile")
+    cur_tag, cur_digest = m.groups()
+    rel = gh_latest("BerriAI/litellm")
+    if not newer(rel.version, cur_tag):
+        # 同一タグの再ビルド（ベースイメージのセキュリティ更新等）に追従する
+        digest = ghcr_digest("berriai/litellm", cur_tag)
+        if digest == cur_digest:
+            return None
+        files.write(LITELLM_DOCKERFILE, pat.sub(f"FROM ghcr.io/berriai/litellm:{cur_tag}@{digest}", df))
+        return Change("litellm", cur_tag, cur_tag, ["同一タグの再ビルドに追従（digest のみ更新）", f"digest `{digest[:19]}…`"])
+    digest = ghcr_digest("berriai/litellm", rel.tag)
+    files.write(LITELLM_DOCKERFILE, pat.sub(f"FROM ghcr.io/berriai/litellm:{rel.tag}@{digest}", df))
+    notes = [f"released {day(rel.date)}", f"digest `{digest[:19]}…`", "config.yaml の互換性をリリースノートで確認"]
+    return Change("litellm", cur_tag, rel.tag, notes)
+
+
 def check_apt_keys(files: Files) -> None:
     """APT 署名鍵の fingerprint 変化を検知する（自動更新はしない）。"""
     if not shutil.which("gpg"):
@@ -670,6 +702,7 @@ COMPONENTS: list[tuple[str, Callable[[Files], Change | None]]] = [
     ("pyright", npm_arg("pyright", "pyright", "PYRIGHT_VERSION")),
     ("serena", bump_serena),
     ("docker-socket-proxy", bump_socket_proxy),
+    ("litellm", bump_litellm),
     ("apt-keys", check_apt_keys),
 ]
 

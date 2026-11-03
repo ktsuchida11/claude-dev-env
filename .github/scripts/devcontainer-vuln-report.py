@@ -114,7 +114,7 @@ def remedy_for(result: dict, vuln: dict) -> tuple[str, str]:
     return MANUAL, f"`{target}`"
 
 
-def load_findings(image_json: dict) -> list[Finding]:
+def load_findings(image_json: dict, remedy: str | None = None) -> list[Finding]:
     seen: set[tuple] = set()
     findings = []
     for result in image_json.get("Results") or []:
@@ -124,7 +124,7 @@ def load_findings(image_json: dict) -> list[Finding]:
             if key in seen:
                 continue
             seen.add(key)
-            kind, remedy = remedy_for(result, v)
+            kind, how = (BUMP, remedy) if remedy else remedy_for(result, v)
             findings.append(
                 Finding(
                     vuln_id=v["VulnerabilityID"],
@@ -134,7 +134,7 @@ def load_findings(image_json: dict) -> list[Finding]:
                     fixed=v.get("FixedVersion", ""),
                     location=location,
                     remedy_kind=kind,
-                    remedy=remedy,
+                    remedy=how,
                     url=v.get("PrimaryURL", ""),
                 )
             )
@@ -265,11 +265,12 @@ def main() -> int:
     parser.add_argument("--ignorefile", metavar="PATH", help="件数表示用の .trivyignore.yaml")
     parser.add_argument("--summary", metavar="PATH", help="Markdown の出力先")
     parser.add_argument("--title", default="DevContainer 脆弱性スキャン結果")
+    parser.add_argument("--remedy", metavar="NAME", help="全件の対処方法を bump スクリプトの依存名に固定する")
     args = parser.parse_args()
 
     image_json = json.loads(Path(args.image).read_text())
     config_json = json.loads(Path(args.config).read_text()) if args.config else {}
-    findings = load_findings(image_json)
+    findings = load_findings(image_json, args.remedy)
     misconfigs = load_misconfigs(config_json)
     report = render(image_json, findings, misconfigs, count_ignores(args.ignorefile), args.title)
 

@@ -1,6 +1,8 @@
-# ベースイメージを SHA256 ダイジェストでピン留め（サプライチェーン対策）
-# 更新時: docker pull ghcr.io/berriai/litellm:main-latest && docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/berriai/litellm:main-latest
-FROM ghcr.io/berriai/litellm:main-latest@sha256:7c311546c25e7bb6e8cafede9fcd3d0d622ac636b5c9418befaa32e85dfb0186
+# ベースイメージを正式リリースのタグ + SHA256 ダイジェストでピン留め（サプライチェーン対策）
+# main-latest（開発ブランチのビルド）は使わない。LiteLLM は 2026-03 にサプライチェーン攻撃を受けている。
+# GitHub の正式リリース（prerelease / -rc / -dev 以外）に .github/scripts/devcontainer-version-bump.py が
+# 7 日クールダウンで追従し、自動更新 PR を作成する。更新時は config.yaml との互換性をリリースノートで確認すること。
+FROM ghcr.io/berriai/litellm:v1.99.4@sha256:475f4ae80a09d769d84c92202e70502abe52a62a760c97e598261c9c8cf8244f
 
 COPY config.yaml /app/config.yaml
 
