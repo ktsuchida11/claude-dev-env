@@ -759,6 +759,9 @@ bash /workspace/.claude/tests/security-test.sh
 bash /workspace/.claude/tests/hook-test.sh
 ```
 
+`hook-test.sh` は `.github/workflows/hook-tests.yml` により、`.claude/hooks/**` または `hook-test.sh` を変更する
+PR と main への push でも CI 実行される（失敗時はチェックが失敗する）。
+
 ### 手動テスト（Claude Code セッション内）
 
 Claude Code の permissions/sandbox レイヤーは、実際の Claude Code セッション内でのみ検証可能。チェックリストに沿って確認する:
@@ -893,7 +896,7 @@ dev コンテナには以下の MCP (Model Context Protocol) サーバーがプ�
 
 | MCP | 取得元 | 現在の pin |
 | --- | --- | --- |
-| context7 | npm `@upstash/context7-mcp` | `4.4.2` |
+| context7 | npm `@upstash/context7-mcp` | `4.4.4` |
 | playwright | npm `@playwright/mcp` | `0.0.83` |
 | serena | git `oraios/serena` | commit `949a27ef1e5fda1a6e7b561e777bcece345c6ffd`（v1.7.0 相当）|
 

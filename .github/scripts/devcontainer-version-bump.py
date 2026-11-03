@@ -301,7 +301,8 @@ def bump_node(files: Files) -> Change | None:
         raise BumpError("FROM node:<ver>-<variant>@sha256:<digest> not found")
     cur, variant, cur_digest = m.groups()
     major = vtuple(cur)[0]
-    index = get_json("https://nodejs.org/dist/index.json")
+    # index.json にはプレリリース（v27.0.0-alpha 等）も含まれるため安定版のみに絞る
+    index = [e for e in get_json("https://nodejs.org/dist/index.json") if is_stable(e["version"])]
 
     lts_majors = sorted({vtuple(e["version"])[0] for e in index if e.get("lts")})
     if lts_majors and lts_majors[-1] > major:
@@ -492,7 +493,9 @@ def bump_jdtls(files: Files) -> Change | None:
     df = files.read(DOCKERFILE)
     cur = get_arg(df, "JDTLS_VERSION")
     base = "https://download.eclipse.org/jdtls/milestones/"
-    vers = sorted(set(re.findall(r"(\d+\.\d+\.\d+)/", get_text(base))), key=vtuple, reverse=True)
+    # ディレクトリ一覧のリンクは末尾 / の有無が変わることがあるため、どちらでも拾う
+    links = re.findall(r"/jdtls/milestones/(\d+\.\d+\.\d+)/?['\"]", get_text(base))
+    vers = sorted(set(links), key=vtuple, reverse=True)
     if not vers:
         raise BumpError("jdtls: could not parse milestones index")
     for v in vers:
