@@ -1,0 +1,39 @@
+name: Hook tests
+
+# .claude/hooks の回帰（block-dangerous.sh の regex 境界による誤検知等）を検知するため、
+# hook・テストを変更したときに .claude/tests/hook-test.sh を実行する。
+
+on:
+  pull_request:
+    paths:
+      - '.claude/hooks/**'
+      - '.claude/tests/hook-test.sh'
+      - '.github/workflows/hook-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.claude/hooks/**'
+      - '.claude/tests/hook-test.sh'
+      - '.github/workflows/hook-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hook-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hook-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Actions はタグ書き換え（2026-03 の trivy-action 侵害等）対策としてコミット SHA で pin する
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # jq / bash / python3 は ubuntu-latest に標準で入っている
+      - name: Run hook tests
+        run: bash .claude/tests/hook-test.sh
