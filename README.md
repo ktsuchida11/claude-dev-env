@@ -883,7 +883,7 @@ dev コンテナには以下の MCP (Model Context Protocol) サーバーがプ�
 
 | MCP | 取得元 | 現在の pin |
 | --- | --- | --- |
-| context7 | npm `@upstash/context7-mcp` | `4.4.2` |
+| context7 | npm `@upstash/context7-mcp` | `4.4.4` |
 | playwright | npm `@playwright/mcp` | `0.0.83` |
 | serena | git `oraios/serena` | commit `949a27ef1e5fda1a6e7b561e777bcece345c6ffd`（v1.7.0 相当）|
 

@@ -79,7 +79,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # --- 1. Terraform CLI (HashiCorp PGP 署名検証 + SHA256) ---
 # HashiCorp PGP fingerprint: https://www.hashicorp.com/trust/security
-ARG TERRAFORM_VERSION=1.16.6
+ARG TERRAFORM_VERSION=1.17.0
 ARG HASHICORP_PGP_FINGERPRINT=C874011F0AB405110D02105534365D9472D7468F
 RUN set -eux; \
   ARCH=$(dpkg --print-architecture); \
@@ -142,9 +142,9 @@ RUN set -eux; \
   session-manager-plugin
 
 # --- 3. tflint (SHA256 ピン留め、公式 checksums.txt と照合済みの値) ---
-ARG TFLINT_VERSION=0.64.0
-ARG TFLINT_SHA256_AMD64=cca9d13e2e1d7a2c627af60ff899a3c9b74212899416aeb96ec764d2ef954537
-ARG TFLINT_SHA256_ARM64=560da89aacf59389d4eb029730dd5b109b7288096c32f2726a0d9e783a5ea8eb
+ARG TFLINT_VERSION=0.65.0
+ARG TFLINT_SHA256_AMD64=d4c545ed2e29d6338604b586f34f544f380f70f243aa72f7b484713835eaec61
+ARG TFLINT_SHA256_ARM64=843017c47a98be1de4d88fa038daa293770fe25cd01656c4f08b2e30d1d3b3a0
 RUN set -eux; \
   ARCH=$(dpkg --print-architecture); \
   case "${ARCH}" in amd64) SHA=${TFLINT_SHA256_AMD64} ;; arm64) SHA=${TFLINT_SHA256_ARM64} ;; *) exit 1 ;; esac; \
@@ -309,7 +309,7 @@ RUN if [ "$ENABLE_JAVA" = "true" ]; then \
   fi
 
 # Install Gradle (SHA256 公式 .sha256)
-ARG GRADLE_VERSION=9.8.1
+ARG GRADLE_VERSION=9.8.2
 RUN if [ "$ENABLE_JAVA" = "true" ]; then \
   set -eux; \
   cd /tmp; \
@@ -374,7 +374,7 @@ RUN set -eux; \
 # Trixie の python3-pip は dpkg 管理 (RECORD ファイル無し) で、--break-system-packages だけでは
 # 上書きインストールが拒否される。--ignore-installed を併用して既存メタデータを無視させる。
 ARG PIP_VERSION=26.2.2
-ARG UV_VERSION=0.13.4
+ARG UV_VERSION=0.13.6
 RUN pip3 install --break-system-packages --ignore-installed "pip==${PIP_VERSION}" && \
   pip3 install --break-system-packages "uv==${UV_VERSION}" && \
   pip3 install --break-system-packages --uploaded-prior-to=P7D langfuse pip-audit playwright
@@ -425,7 +425,7 @@ RUN cd /tmp && CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} /usr/local/bin/install
 
 # --- MCP server npm packages (個別インストールで1つの失敗が他に影響しない) ---
 # バージョンは mcp-servers.json と必ず揃える。更新時は両方一緒に変更すること。
-ARG CONTEXT7_MCP_VERSION=4.4.2
+ARG CONTEXT7_MCP_VERSION=4.4.4
 ARG PLAYWRIGHT_MCP_VERSION=0.0.83
 RUN npm install -g --ignore-scripts @upstash/context7-mcp@${CONTEXT7_MCP_VERSION} || echo "WARN: context7-mcp install failed"
 RUN npm install -g --ignore-scripts @playwright/mcp@${PLAYWRIGHT_MCP_VERSION} || echo "WARN: playwright-mcp install failed"
