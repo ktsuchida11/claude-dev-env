@@ -4,7 +4,7 @@
 # Node はパッチバージョンまでタグで明示する（.github/workflows/devcontainer-version-update.yml が同一メジャー内で自動更新）。
 # -slim を採用（フル版の buildpack-deps 由来パッケージによる脆弱性を削減。必要なものは Layer 1 で明示導入）。
 # 更新時: docker pull node:<ver>-trixie-slim && docker inspect --format='{{index .RepoDigests 0}}' node:<ver>-trixie-slim
-FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea
+FROM node:24.22.2-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446
 
 ARG TZ
 ENV TZ="$TZ"
@@ -461,8 +461,8 @@ COPY decrypt-env.sh /usr/local/bin/decrypt-env.sh
 USER root
 
 # Install Java language server (jdtls) for Serena
-ARG JDTLS_VERSION=1.62.0
-ARG JDTLS_TIMESTAMP=202610131109
+ARG JDTLS_VERSION=1.63.0
+ARG JDTLS_TIMESTAMP=202610191322
 RUN if [ "$ENABLE_JAVA" = "true" ]; then \
   cd /tmp \
   && TGZ="jdt-language-server-${JDTLS_VERSION}-${JDTLS_TIMESTAMP}.tar.gz" \

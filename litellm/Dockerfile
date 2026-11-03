@@ -4,7 +4,7 @@
 # 7 日クールダウンで追従し、自動更新 PR を作成する。更新時は config.yaml との互換性をリリースノートで確認すること。
 # 2026-10-21 に再びリリースパイプラインが侵害され悪性 1.107.0 が公開されたため、自動更新の上限を 1.106.2
 # （侵害直前の最後の安全版）にしている（bump スクリプトの MAX_VERSIONS）。
-FROM ghcr.io/berriai/litellm:v1.99.4@sha256:475f4ae80a09d769d84c92202e70502abe52a62a760c97e598261c9c8cf8244f
+FROM ghcr.io/berriai/litellm:v1.106.2@sha256:7294b90f868c5c38c99b83021c7ba46f9b439e95f8e32964c925c7d2563a03f7
 
 COPY config.yaml /app/config.yaml
 COPY --chmod=755 require-master-key.sh /usr/local/bin/require-master-key.sh
