@@ -1,0 +1,20 @@
+# Trivy の除外設定（.github/actions/trivy-scan から --ignorefile で参照）
+#
+# 修正版が無い / 実行経路上で到達しない等の理由でリスクを受容する場合のみ追加する。
+# 必ず statement（受容理由）と expired_at（再評価期限）を書き、期限切れになったら見直すこと。
+#
+# 例:
+# vulnerabilities:
+#   - id: CVE-2026-00000
+#     paths:
+#       - usr/local/bin/example
+#     statement: 該当関数を呼ばない用途のみ。上流の修正版公開待ち（https://github.com/...）
+#     expired_at: 2026-12-31
+#
+# misconfigurations:
+#   - id: DS-0002
+#     statement: ...
+#     expired_at: 2026-12-31
+
+vulnerabilities: []
+misconfigurations: []

@@ -9,6 +9,11 @@ on:
     # 毎週月曜 09:00 JST (= 00:00 UTC) に実行
     - cron: '0 0 * * 1'
   workflow_dispatch:
+    inputs:
+      trigger:
+        description: 起動元（devcontainer-vuln-scan から起動された場合に Issue 番号が入る）
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -55,6 +60,18 @@ jobs:
             -t devcontainer-bump-check \
             .devcontainer 2>&1 | tee "$RUNNER_TEMP/build.log"
 
+      # 更新後のイメージに修正版のある脆弱性が残っていないかを確認し、結果を PR 本文に載せる
+      # （GITHUB_TOKEN で作成した PR では devcontainer-vuln-scan の pull_request トリガーが動かないため）
+      - name: Scan updated image
+        id: scan
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/trivy-scan
+        with:
+          image: devcontainer-bump-check
+          output-dir: ${{ runner.temp }}/trivy
+          title: 脆弱性スキャン（更新後）
+
       - name: Commit and push to update branch
         if: steps.bump.outputs.changed == 'true'
         env:
@@ -72,10 +89,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+          FIXABLE_CRITICAL: ${{ steps.scan.outputs.fixable_critical }}
+          TRIGGER: ${{ inputs.trigger }}
         run: |
           BODY="$RUNNER_TEMP/body.md"
           cp "$RUNNER_TEMP/summary.md" "$BODY"
           {
+            if [ -n "$TRIGGER" ]; then
+              echo
+              echo "起動元: ${TRIGGER}"
+            fi
             echo
             echo "### ビルド検証 (linux/amd64, ENABLE_JAVA=true)"
             echo
@@ -87,6 +111,19 @@ jobs:
               echo '```'
               tail -n 40 "$RUNNER_TEMP/build.log" 2>/dev/null || echo "(log unavailable)"
               echo '```'
+            fi
+            echo
+            if [ "$SCAN_OUTCOME" = "success" ]; then
+              # 見出しレベルを PR 本文の構成（### ビルド検証）に揃える
+              sed 's/^## /### /; s/^### 修正版/#### 修正版/; s/^### 設定ミス/#### 設定ミス/' "$RUNNER_TEMP/trivy/report.md"
+              if [ "$FIXABLE_CRITICAL" != "0" ]; then
+                echo
+                echo "⚠️ **未解消**: 更新後も修正版のある CRITICAL が ${FIXABLE_CRITICAL} 件残っています（7 日未満の修正版・再ビルド待ち等）。"
+              fi
+            else
+              echo "### 脆弱性スキャン（更新後）"
+              echo
+              echo "⚠️ スキャンを実行できませんでした（ビルド失敗またはスキャンエラー）。ワークフローログを確認してください。"
             fi
             echo
             echo "## レビュー観点"

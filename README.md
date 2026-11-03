@@ -926,6 +926,39 @@ python3 .github/scripts/devcontainer-version-bump.py --only serena     # 特定�
 python3 .github/scripts/devcontainer-version-bump.py                   # 全依存を適用
 ```
 
+- Node ベースイメージ / docker-socket-proxy は、バージョンが同じでも同一タグが再ビルドされて digest が
+  変わっていれば追従する（Debian のセキュリティ更新を取り込むため）
+
+### 脆弱性スキャン（Trivy）
+
+`.github/workflows/devcontainer-vuln-scan.yml` が DevContainer イメージ（`ENABLE_JAVA=true` のフル構成）を
+ビルドし、Trivy でイメージの脆弱性と Dockerfile の設定ミスをスキャンする。
+
+| 起動 | 動作 |
+| --- | --- |
+| 毎日 07:00 JST / 手動実行 | 修正版のある CRITICAL / HIGH があればラベル `devcontainer-vulnerability` の Issue を作成・更新し、検出内容が前回から変わっていれば `DevContainer dependency auto-update` を起動する。解消されると Issue を自動クローズ |
+| `.devcontainer/**` を変更する PR | 修正版のある CRITICAL があれば失敗させる |
+| 自動更新 PR | 更新後のイメージをスキャンし、結果を PR 本文に記載（`GITHUB_TOKEN` で作成した PR では PR トリガーが動かないため） |
+
+- Trivy は `aquasecurity/trivy-action` / `setup-trivy` を使わず（2026-03 に侵害）、Dockerfile の
+  `TRIVY_VERSION` / `TRIVY_SHA256_AMD64` で SHA256 照合した公式バイナリを使う（`.github/actions/trivy-scan`）
+- レポートの「対処」列は、`自動更新`（bump スクリプトの依存。`--only <名前>` で個別に更新可）/
+  `再ビルド`（APT・AWS CLI・Claude Code 等、ビルド時に最新を取得するもの）/ `手動調査` に分類する
+- クールダウン例外は自動化しない。公開から 7 日未満の修正版しかない場合は Issue を見て手動で判断する
+  （Node のセキュリティリリースと Debian パッケージのみ自動で取り込まれる）
+- リスク受容で除外する場合は `.devcontainer/.trivyignore.yaml` に `statement`（理由）と
+  `expired_at`（再評価期限）を付けて追加する
+- 毎日フル構成をビルドするため 1 回 20 分前後の Actions 時間を使う。抑えたい場合は cron を週次に変更する
+
+ローカルで確認する場合はホストで実行する（コンテナ内はファイアウォールの許可リストに Trivy DB の
+取得元 `mirror.gcr.io` / `ghcr.io` が無いため DB を取得できない）:
+
+```bash
+docker compose build dev
+trivy image --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed \
+  --ignorefile .devcontainer/.trivyignore.yaml <ビルドしたイメージ名>
+```
+
 ### 確認方法
 
 ```bash

@@ -289,7 +289,7 @@ def bump_node(files: Files) -> Change | None:
     m = re.search(r"^FROM node:(\d+\.\d+\.\d+)-([a-z-]+)@(sha256:[0-9a-f]{64})$", df, re.M)
     if not m:
         raise BumpError("FROM node:<ver>-<variant>@sha256:<digest> not found")
-    cur, variant, _ = m.groups()
+    cur, variant, cur_digest = m.groups()
     major = vtuple(cur)[0]
     index = get_json("https://nodejs.org/dist/index.json")
 
@@ -308,11 +308,15 @@ def bump_node(files: Files) -> Change | None:
         d = datetime.fromisoformat(e["date"]).replace(tzinfo=timezone.utc)
         if eligible(d) or e.get("security"):
             cands.append((v, d, bool(e.get("security"))))
-    if not cands:
-        return None
-    v, d, security = max(cands, key=lambda c: vtuple(c[0]))
-    if not newer(v, cur):
-        return None
+    best = max(cands, key=lambda c: vtuple(c[0])) if cands else None
+    if not best or not newer(best[0], cur):
+        # 同一タグは Debian のセキュリティ更新等で再ビルドされるため、digest が変わっていれば追従する
+        digest = docker_hub_digest("library/node", f"{cur}-{variant}")
+        if digest == cur_digest:
+            return None
+        files.write(DOCKERFILE, df.replace(cur_digest, digest))
+        return Change("node (base image)", cur, cur, ["同一タグの再ビルドに追従（digest のみ更新）", f"digest `{digest[:19]}…`"])
+    v, d, security = best
     digest = docker_hub_digest("library/node", f"{v}-{variant}")
     df = sub_required(
         r"^FROM node:\d+\.\d+\.\d+-[a-z-]+@sha256:[0-9a-f]{64}$",
@@ -567,15 +571,21 @@ def bump_serena(files: Files) -> Change | None:
 
 def bump_socket_proxy(files: Files) -> Change | None:
     pat = re.compile(r"tecnativa/docker-socket-proxy:(v[\d.]+)@(sha256:[0-9a-f]{64})")
-    cur_tag = None
+    cur_tag = cur_digest = None
     for p in COMPOSE_FILES:
         m = pat.search(files.read(p))
         if not m:
             raise BumpError(f"docker-socket-proxy pin not found in {p.name}")
-        cur_tag = m.group(1)
+        cur_tag, cur_digest = m.groups()
     rel = gh_latest("Tecnativa/docker-socket-proxy")
     if not newer(rel.version, cur_tag):
-        return None
+        # 同一タグの再ビルド（ベースイメージのセキュリティ更新等）に追従する
+        digest = docker_hub_digest("tecnativa/docker-socket-proxy", cur_tag)
+        if digest == cur_digest:
+            return None
+        for p in COMPOSE_FILES:
+            files.write(p, pat.sub(f"tecnativa/docker-socket-proxy:{cur_tag}@{digest}", files.read(p)))
+        return Change("docker-socket-proxy", cur_tag, cur_tag, ["同一タグの再ビルドに追従（digest のみ更新）", f"digest `{digest[:19]}…`"])
     digest = docker_hub_digest("tecnativa/docker-socket-proxy", rel.tag)
     for p in COMPOSE_FILES:
         text = pat.sub(f"tecnativa/docker-socket-proxy:{rel.tag}@{digest}", files.read(p))
