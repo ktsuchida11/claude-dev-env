@@ -2,7 +2,7 @@
   "context7": {
     "type": "stdio",
     "command": "npx",
-    "args": ["-y", "@upstash/context7-mcp@4.4.2"],
+    "args": ["-y", "@upstash/context7-mcp@4.4.4"],
     "env": {}
   },
   "playwright": {
