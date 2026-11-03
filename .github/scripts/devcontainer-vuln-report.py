@@ -29,7 +29,7 @@ ACTIONABLE = {"CRITICAL", "HIGH"}
 MAX_ROWS = 100  # Issue 本文の上限 (65536 文字) 対策
 
 # 対処方法の種別
-BUMP = "自動更新"  # devcontainer-version-bump.py の依存を更新すれば解消
+BUMP = "依存更新"  # devcontainer-version-bump.py の依存の新版で解消（pin が上流の最新なら上流のリリース待ち）
 REBUILD = "再ビルド"  # ビルド時に最新を取得しているため、修正版の公開後に再ビルドすれば解消
 MANUAL = "手動調査"
 
@@ -220,8 +220,10 @@ def render(
         if any(kind == BUMP for kind, _ in groups):
             lines += [
                 "",
-                "「自動更新」は `devcontainer-version-update` の PR で更新される"
+                "「依存更新」は新版が出ていれば `devcontainer-version-update` の PR で取り込まれる"
                 "（`devcontainer-version-bump.py --only <名前>` で個別更新も可）。"
+                "pin が既に上流の最新の場合（Go / Rust バイナリが古いツールチェーンでビルドされている等）は"
+                "上流のリリース待ちとなるため、影響を評価して `.trivyignore.yaml` での期限付き受容を検討すること。"
                 "公開 7 日未満の修正版しか無い場合は、クールダウン例外を手動で判断すること。",
             ]
         lines += [""] + vuln_rows(actionable)

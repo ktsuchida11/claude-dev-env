@@ -16,5 +16,14 @@
 #     statement: ...
 #     expired_at: 2026-12-31
 
-vulnerabilities: []
+vulnerabilities:
+  # gitleaks v8.30.1（2026-03-21 公開、2026-11 時点で上流の最新）は Go 1.24.11 でビルドされており修正版が無い。
+  # 影響は Config.Clone / GetConfigForClient で ClientCAs・RootCAs を書き換えた TLS セッション再開時のみで、
+  # ローカルファイルを走査する gitleaks の用途では到達しない。上流の新版が出れば週次の自動更新で解消する。
+  - id: CVE-2025-68121
+    paths:
+      - usr/local/bin/gitleaks
+    statement: gitleaks 上流に修正版リリースなし。TLS セッション再開の経路を使わない用途のため受容（2026-11-03）
+    expired_at: 2027-02-03
+
 misconfigurations: []

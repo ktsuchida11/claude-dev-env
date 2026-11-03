@@ -942,7 +942,7 @@ python3 .github/scripts/devcontainer-version-bump.py                   # 全依�
 
 - Trivy は `aquasecurity/trivy-action` / `setup-trivy` を使わず（2026-03 に侵害）、Dockerfile の
   `TRIVY_VERSION` / `TRIVY_SHA256_AMD64` で SHA256 照合した公式バイナリを使う（`.github/actions/trivy-scan`）
-- レポートの「対処」列は、`自動更新`（bump スクリプトの依存。`--only <名前>` で個別に更新可）/
+- レポートの「対処」列は、`依存更新`（bump スクリプトの依存。新版が出れば自動更新 PR で解消、`--only <名前>` で個別に更新可）/
   `再ビルド`（APT・AWS CLI・Claude Code 等、ビルド時に最新を取得するもの）/ `手動調査` に分類する
 - クールダウン例外は自動化しない。公開から 7 日未満の修正版しかない場合は Issue を見て手動で判断する
   （Node のセキュリティリリースと Debian パッケージのみ自動で取り込まれる）

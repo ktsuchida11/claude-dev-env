@@ -109,7 +109,7 @@ jobs:
             echo "---"
             echo
             echo "- 最終スキャン: ${RUN_URL}（JSON は artifact \`trivy-results\`）"
-            echo "- 「自動更新」の依存は \`devcontainer-version-update\` の PR で更新される（公開から 7 日未満の修正版は除く）"
+            echo "- 「依存更新」は新版が出ていれば \`devcontainer-version-update\` の PR で取り込まれる（公開から 7 日未満の修正版・上流が最新のままのものは除く）"
             echo "- 「再ビルド」は修正版の公開後に DevContainer を再ビルドすれば解消する"
             echo "- 解消されると次回スキャンでこの Issue は自動でクローズされる"
             echo
