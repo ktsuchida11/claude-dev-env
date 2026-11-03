@@ -252,7 +252,11 @@ VS Code 拡張（自動インストール）:
 | --- | --- |
 | ベースイメージ | `ghcr.io/berriai/litellm:v1.99.4`（正式リリースのタグ + digest 固定。自動更新 PR で更新） |
 | ポート | 4000 |
-| 役割 | `claude-litellm` エイリアスで利用。OpenAI / Anthropic API への変換プロキシ |
+| 役割 | `claude-litellm` で利用。OpenAI / Anthropic API への変換プロキシ |
+| 起動条件 | **既定では起動しない（opt-in）**。`.env` に `LITELLM_MASTER_KEY` と `COMPOSE_PROFILES=litellm` を設定した場合のみ起動 |
+
+- `LITELLM_MASTER_KEY` が空のまま起動すると Proxy が認証なしで動くため、`litellm/require-master-key.sh` が起動を拒否する
+- `LITELLM_MASTER_KEY` 未設定時は dev コンテナの `LITELLM_BASE_URL` が空になり、`claude-litellm` は接続せずにエラー終了する
 
 ### ネットワークフロー
 
@@ -394,8 +398,14 @@ ANTHROPIC_MODEL=claude-opus-4-6 claude
 
 ### LiteLLM 経由: OpenAI モデルを使う
 
-`claude-litellm` エイリアスで LiteLLM プロキシ経由の OpenAI モデルが使えます。
-`.env` に `OPENAI_API_KEY` の設定が必要です。
+`claude-litellm` で LiteLLM プロキシ経由の OpenAI モデルが使えます。
+LiteLLM は既定では起動しないため、`.env` に次を設定してからコンテナを起動し直してください。
+
+```bash
+COMPOSE_PROFILES=litellm
+LITELLM_MASTER_KEY=sk-<自分で決めるランダムな文字列>   # 例: openssl rand -hex 24
+OPENAI_API_KEY=sk-...
+```
 
 ```bash
 # GPT-4o（LiteLLM 経由）

@@ -412,7 +412,7 @@ RUN set -eux; \
   -a "source /usr/share/doc/fzf/examples/key-bindings.zsh" \
   -a "source /usr/share/doc/fzf/examples/completion.zsh" \
   -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
-  -a "alias claude-litellm='ANTHROPIC_BASE_URL=\$LITELLM_BASE_URL ANTHROPIC_AUTH_TOKEN=\$LITELLM_AUTH_TOKEN claude'" \
+  -a "claude-litellm() { if [ -z \"\$LITELLM_BASE_URL\" ] || [ -z \"\$LITELLM_AUTH_TOKEN\" ]; then echo 'claude-litellm: LiteLLM は未設定のため接続しません（.env に LITELLM_MASTER_KEY と COMPOSE_PROFILES=litellm を設定）' >&2; return 1; fi; ANTHROPIC_BASE_URL=\"\$LITELLM_BASE_URL\" ANTHROPIC_AUTH_TOKEN=\"\$LITELLM_AUTH_TOKEN\" claude \"\$@\"; }" \
   -x; \
   rm -f /tmp/zsh-in-docker.sh
 

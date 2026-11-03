@@ -5,7 +5,10 @@
 FROM ghcr.io/berriai/litellm:v1.99.4@sha256:475f4ae80a09d769d84c92202e70502abe52a62a760c97e598261c9c8cf8244f
 
 COPY config.yaml /app/config.yaml
+COPY --chmod=755 require-master-key.sh /usr/local/bin/require-master-key.sh
 
 EXPOSE 4000
 
+# LITELLM_MASTER_KEY 未設定（= 認証なし）では起動しない。docker/prod_entrypoint.sh はベースイメージの ENTRYPOINT
+ENTRYPOINT ["/usr/local/bin/require-master-key.sh", "docker/prod_entrypoint.sh"]
 CMD ["--config", "/app/config.yaml", "--port", "4000", "--host", "0.0.0.0"]
