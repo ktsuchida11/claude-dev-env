@@ -43,6 +43,8 @@ STABLE = re.compile(r"^v?(\d+(?:\.\d+)+)$")
 
 # メジャーバージョンを固定する依存（理由は Dockerfile / README のコメント参照）
 MAJOR_PINS = {
+    # Node は LTS メジャーをここで指定する。現在のメジャーより大きくすると、次回の自動更新でそのメジャーへ上げる
+    "node": 26,
     "rtk": 0,  # 1.0 以降はデフォルトバイナリに BUSL-1.1 (rtk-engine) を含むため
     "serena": 1,  # 2.0 以降は GPL 化・REPL 既定化で MCP ツール構成が変わるため
     "typescript": 6,  # 7 (ネイティブ版) は tsserver.js 非同梱で typescript-language-server が動かないため
@@ -303,17 +305,20 @@ def sub_required(pattern: str, repl: str, text: str, what: str) -> str:
 
 
 def bump_node(files: Files) -> Change | None:
-    """Node ベースイメージ。同一メジャー内で更新し、新しい LTS メジャーは警告のみ。"""
+    """Node ベースイメージ。MAJOR_PINS["node"] のメジャー内で更新し、それより新しい LTS メジャーは警告のみ。"""
     df = files.read(DOCKERFILE)
     m = re.search(r"^FROM node:(\d+\.\d+\.\d+)-([a-z-]+)@(sha256:[0-9a-f]{64})$", df, re.M)
     if not m:
         raise BumpError("FROM node:<ver>-<variant>@sha256:<digest> not found")
     cur, variant, cur_digest = m.groups()
-    major = vtuple(cur)[0]
+    cur_major = vtuple(cur)[0]
+    major = max(cur_major, MAJOR_PINS["node"])
     # index.json にはプレリリース（v27.0.0-alpha 等）も含まれるため安定版のみに絞る
     index = [e for e in get_json("https://nodejs.org/dist/index.json") if is_stable(e["version"])]
 
     lts_majors = sorted({vtuple(e["version"])[0] for e in index if e.get("lts")})
+    if major > cur_major and major not in lts_majors:
+        raise BumpError(f"Node.js {major} はまだ LTS ではありません（MAJOR_PINS['node'] を見直してください）")
     if lts_majors and lts_majors[-1] > major:
         WARNINGS.append(
             f"Node.js {lts_majors[-1]} が LTS になっています（現在 {major}）。メジャー更新は手動で検討してください。"
@@ -346,6 +351,8 @@ def bump_node(files: Files) -> Change | None:
     )
     files.write(DOCKERFILE, df)
     notes = [f"released {day(d)}", f"digest `{digest[:19]}…`"]
+    if major > cur_major:
+        notes.append(f"メジャー更新 {cur_major} → {major}（MAJOR_PINS）")
     if security:
         notes.append("セキュリティリリースのためクールダウン例外")
     return Change("node (base image)", cur, v, notes)

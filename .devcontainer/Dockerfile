@@ -2,6 +2,7 @@
 # Trixie (Debian 13, glibc 2.41) を採用。Bookworm (glibc 2.36) では rtk arm64 バイナリが
 # GLIBC_2.39 必須のため実行不可だった経緯による（amd64 は musl 静的なので独立）。
 # Node はパッチバージョンまでタグで明示する（.github/workflows/devcontainer-version-update.yml が同一メジャー内で自動更新）。
+# メジャーは .github/scripts/devcontainer-version-bump.py の MAJOR_PINS["node"] で指定し、上げると次回の自動更新で移行する。
 # -slim を採用（フル版の buildpack-deps 由来パッケージによる脆弱性を削減。必要なものは Layer 1 で明示導入）。
 # 更新時: docker pull node:<ver>-trixie-slim && docker inspect --format='{{index .RepoDigests 0}}' node:<ver>-trixie-slim
 FROM node:24.22.2-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446
@@ -20,8 +21,8 @@ ENV TZ="$TZ"
 #     https_proxy=${HTTPS_PROXY} \
 #     no_proxy=${NO_PROXY}
 
-# Supply chain: ビルド時の npm にもクールダウンを適用
-# node:24 は npm 11.x 同梱のため min-release-age が利用可能
+# 同梱の npm が min-release-age に対応している前提（node:24 の npm 11.x で確認。Node のメジャー更新時は自動更新 PR のビルドで確認する）
+# node:26 同梱の npm 11.x は min-release-age に対応している
 # workspace/.npmrc はビルド時にマウントされないため、グローバル設定で適用
 # 緊急時は --build-arg NPM_MIN_RELEASE_AGE=0 で待機なしビルド可能
 ARG NPM_MIN_RELEASE_AGE=7
