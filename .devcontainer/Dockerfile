@@ -4,7 +4,7 @@
 # Node はパッチバージョンまでタグで明示する（.github/workflows/devcontainer-version-update.yml が同一メジャー内で自動更新）。
 # -slim を採用（フル版の buildpack-deps 由来パッケージによる脆弱性を削減。必要なものは Layer 1 で明示導入）。
 # 更新時: docker pull node:<ver>-trixie-slim && docker inspect --format='{{index .RepoDigests 0}}' node:<ver>-trixie-slim
-FROM node:24.22.2-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446
+FROM node:24.22.2-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d
 
 ARG TZ
 ENV TZ="$TZ"
@@ -79,7 +79,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # --- 1. Terraform CLI (HashiCorp PGP 署名検証 + SHA256) ---
 # HashiCorp PGP fingerprint: https://www.hashicorp.com/trust/security
-ARG TERRAFORM_VERSION=1.17.0
+ARG TERRAFORM_VERSION=1.17.1
 ARG HASHICORP_PGP_FINGERPRINT=C874011F0AB405110D02105534365D9472D7468F
 RUN set -eux; \
   ARCH=$(dpkg --print-architecture); \
