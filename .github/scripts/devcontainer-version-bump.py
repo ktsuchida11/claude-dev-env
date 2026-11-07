@@ -694,6 +694,10 @@ COMPONENTS: list[tuple[str, Callable[[Files], Change | None]]] = [
         "gitleaks", "gitleaks/gitleaks", "GITLEAKS_VERSION",
         {"GITLEAKS_SHA256_AMD64": "gitleaks_{v}_linux_x64.tar.gz", "GITLEAKS_SHA256_ARM64": "gitleaks_{v}_linux_arm64.tar.gz"},
         sums="gitleaks_{v}_checksums.txt")),
+    ("gh", github_binary(
+        "gh", "cli/cli", "GH_VERSION",
+        {"GH_SHA256_AMD64": "gh_{v}_linux_amd64.tar.gz", "GH_SHA256_ARM64": "gh_{v}_linux_arm64.tar.gz"},
+        sums="gh_{v}_checksums.txt")),
     ("sops", github_binary(
         "sops", "getsops/sops", "SOPS_VERSION",
         {"SOPS_SHA256_AMD64": "sops-v{v}.linux.amd64", "SOPS_SHA256_ARM64": "sops-v{v}.linux.arm64"},

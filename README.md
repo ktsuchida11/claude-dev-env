@@ -914,7 +914,7 @@ dev コンテナには以下の MCP (Model Context Protocol) サーバーがプ�
 | Node ベースイメージ / docker-socket-proxy | タグ + digest | Docker Hub から digest 取得（Node は同一メジャー内。セキュリティリリースはクールダウン例外） |
 | LiteLLM (`litellm/Dockerfile`) | タグ + digest | GitHub の正式リリース（prerelease / `-stable` / `-rc` / `-dev` 以外）に追従し ghcr.io から digest 取得。`config.yaml` の互換性はリリースノートで確認。**上限 v1.106.2**（2026-10-21 のリリースパイプライン侵害以降の版は、安全性を確認してから `MAX_VERSIONS` を手動で引き上げる） |
 | Terraform / AWS CLI / Session Manager plugin | バージョン + PGP 署名 | 署名ファイルの公開を確認（署名検証はビルド時） |
-| tflint / terraform-docs / trivy / gitleaks / sops / rtk | バージョン + アーキ別 SHA256 | 実ファイルの SHA256 を公式 checksums と照合してから書き込む |
+| gh / tflint / terraform-docs / trivy / gitleaks / sops / rtk | バージョン + アーキ別 SHA256 | 実ファイルの SHA256 を公式 checksums と照合してから書き込む |
 | git-delta / zsh-in-docker | バージョン + SHA256 | 公式 checksums 無しのため初回取得時の SHA256 を固定 |
 | pip / uv / npm（MCP・LSP）/ Maven / Gradle / jdtls | バージョン | 公式 checksum の公開を確認（Maven / Gradle / jdtls） |
 | serena | commit SHA | リリースタグのコミットへ更新 |

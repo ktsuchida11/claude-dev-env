@@ -46,7 +46,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   man-db \
   unzip \
   gnupg2 \
-  gh \
   bubblewrap \
   socat \
   gnome-keyring \
@@ -70,7 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 信頼の起点:
 #   - terraform / aws cli   : HashiCorp / AWS の PGP 署名（fingerprint を ARG で固定）
 #   - docker / temurin (APT) : 公式 APT リポジトリ（署名鍵の fingerprint を ARG で固定）
-#   - tflint / terraform-docs / trivy / gitleaks / sops / rtk / git-delta / zsh-in-docker :
+#   - gh / tflint / terraform-docs / trivy / gitleaks / sops / rtk / git-delta / zsh-in-docker :
 #       アーキテクチャ別 SHA256 を ARG に直書き（固定後のリリース差し替えを検出するため）
 # 同一リリース内の checksums ファイルとの照合だけでは、リリース自体が乗っ取られた場合
 # （例: 2026-03 の trivy 侵害）にバイナリと checksums を同時に差し替えられて検出できない。
@@ -221,6 +220,24 @@ RUN set -eux; \
   install -m0755 "${BIN}" /usr/local/bin/sops; \
   rm "${BIN}"; \
   sops --version
+
+# --- GitHub CLI (SHA256 ピン留め、公式 checksums と照合済みの値) ---
+# Debian の gh は 2.46 系のまま CVE-2026-48501（トークン漏えい、2.93.0 で修正）が残るため、
+# APT ではなく cli/cli の公式バイナリを使う。
+ARG GH_VERSION=2.103.3
+ARG GH_SHA256_AMD64=4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d
+ARG GH_SHA256_ARM64=ee32df2323c8847f5fac6cb6b4b69ca75828e9329a8f22f677021f7b3306ce63
+RUN set -eux; \
+  ARCH=$(dpkg --print-architecture); \
+  case "${ARCH}" in amd64) SHA=${GH_SHA256_AMD64} ;; arm64) SHA=${GH_SHA256_ARM64} ;; *) exit 1 ;; esac; \
+  cd /tmp; \
+  DIR="gh_${GH_VERSION}_linux_${ARCH}"; \
+  TGZ="${DIR}.tar.gz"; \
+  curl -fsSLo "${TGZ}" "https://github.com/cli/cli/releases/download/v${GH_VERSION}/${TGZ}"; \
+  echo "${SHA}  ${TGZ}" | sha256sum -c -; \
+  tar -xzf "${TGZ}" -C /usr/local --strip-components=1 "${DIR}/bin/gh"; \
+  rm "${TGZ}"; \
+  gh --version
 
 # --- rtk（CLI 出力圧縮プロキシ、LLM トークン削減用） ---
 # 個人メンテのため SHA256 ピン留めで導入。signature/attestation は未発行のため

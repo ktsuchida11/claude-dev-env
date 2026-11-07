@@ -41,6 +41,7 @@ BINARIES = {
     "trivy": "trivy",
     "gitleaks": "gitleaks",
     "sops": "sops",
+    "gh": "gh",
     "rtk": "rtk",
     "delta": "git-delta",
     "session-manager-plugin": "session-manager-plugin",
