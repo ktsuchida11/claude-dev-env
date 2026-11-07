@@ -5,7 +5,7 @@
 # メジャーは .github/scripts/devcontainer-version-bump.py の MAJOR_PINS["node"] で指定し、上げると次回の自動更新で移行する。
 # -slim を採用（フル版の buildpack-deps 由来パッケージによる脆弱性を削減。必要なものは Layer 1 で明示導入）。
 # 更新時: docker pull node:<ver>-trixie-slim && docker inspect --format='{{index .RepoDigests 0}}' node:<ver>-trixie-slim
-FROM node:24.22.2-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d
+FROM node:26.13.0-trixie-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072
 
 ARG TZ
 ENV TZ="$TZ"
