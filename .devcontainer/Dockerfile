@@ -427,6 +427,7 @@ RUN set -eux; \
   sh /tmp/zsh-in-docker.sh \
   -p git \
   -p fzf \
+  -a 'export LANG=C.UTF-8 LC_ALL=C.UTF-8' \
   -a 'source <(fzf --zsh)' \
   -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
   -a "claude-litellm() { if [ -z \"\$LITELLM_BASE_URL\" ] || [ -z \"\$LITELLM_AUTH_TOKEN\" ]; then echo 'claude-litellm: LiteLLM は未設定のため接続しません（.env に LITELLM_MASTER_KEY と COMPOSE_PROFILES=litellm を設定）' >&2; return 1; fi; ANTHROPIC_BASE_URL=\"\$LITELLM_BASE_URL\" ANTHROPIC_AUTH_TOKEN=\"\$LITELLM_AUTH_TOKEN\" claude \"\$@\"; }" \
