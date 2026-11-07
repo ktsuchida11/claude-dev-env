@@ -34,6 +34,9 @@ outputs:
   misconfig:
     description: CRITICAL / HIGH の設定ミスの件数
     value: ${{ steps.report.outputs.misconfig }}
+  misconfig_critical:
+    description: CRITICAL の設定ミスの件数
+    value: ${{ steps.report.outputs.misconfig_critical }}
   fingerprint:
     description: 修正版のある CRITICAL / HIGH の集合の指紋（無ければ空）
     value: ${{ steps.report.outputs.fingerprint }}

@@ -950,8 +950,8 @@ LiteLLM イメージをビルドし、Trivy でイメージの脆弱性と Docke
 
 | 起動 | 動作 |
 | --- | --- |
-| 毎日 07:00 JST / 手動実行 | 修正版のある CRITICAL / HIGH があればラベル `devcontainer-vulnerability` の Issue を作成・更新し、検出内容が前回から変わっていれば `DevContainer dependency auto-update` を起動する。解消されると Issue を自動クローズ |
-| `.devcontainer/**` / `litellm/**` を変更する PR | DevContainer に修正版のある CRITICAL があれば失敗させる（LiteLLM は上流イメージの更新以外に対処手段がないためレポートのみ） |
+| 毎日 07:00 JST / 手動実行 | 修正版のある CRITICAL / HIGH の脆弱性、または CRITICAL / HIGH の設定ミスがあればラベル `devcontainer-vulnerability` の Issue を作成・更新する。脆弱性の検出内容が前回から変わっていれば `DevContainer dependency auto-update` を起動する（設定ミスは依存更新では解消しないため起動しない）。すべて解消されると Issue を自動クローズ |
+| `.devcontainer/**` / `litellm/**` を変更する PR | DevContainer に修正版のある CRITICAL があるか、Dockerfile に CRITICAL の設定ミスがあれば失敗させる（LiteLLM の脆弱性は上流イメージの更新以外に対処手段がないためレポートのみ。HIGH の設定ミスは Issue に記録するのみ） |
 | 自動更新 PR | 更新後のイメージをスキャンし、結果を PR 本文に記載（`GITHUB_TOKEN` で作成した PR では PR トリガーが動かないため） |
 
 - Trivy は `aquasecurity/trivy-action` / `setup-trivy` を使わず（2026-03 に侵害）、Dockerfile の

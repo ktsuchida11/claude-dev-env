@@ -7,6 +7,7 @@ Issue / PR / ジョブサマリー用の Markdown と、ワークフロー判定
 - 修正版のある CRITICAL / HIGH を一覧化し、devcontainer-version-bump.py のどの依存を
   更新すれば解消するか（対処方法）を Target / PkgPath から推定して添える
 - 修正版の無いものは件数と折りたたみ一覧のみ（対処しようがないため Issue のノイズにしない）
+- 設定ミス（CRITICAL / HIGH）は件数を出力し、スキャン対象ファイルとあわせて毎回レポートに明記する
 
 Usage:
   python3 .github/scripts/devcontainer-vuln-report.py --image image.json [--config config.json] \
@@ -186,7 +187,12 @@ def fingerprint(findings: list[Finding]) -> str:
 
 
 def render(
-    image_json: dict, findings: list[Finding], misconfigs: list[dict], ignores: int, title: str
+    image_json: dict,
+    findings: list[Finding],
+    misconfigs: list[dict],
+    ignores: int,
+    title: str,
+    config_targets: list[str] | None = None,
 ) -> str:
     fixable = [f for f in findings if f.fixed]
     unfixed = [f for f in findings if not f.fixed]
@@ -230,9 +236,19 @@ def render(
     else:
         lines.append("ありません。")
 
-    if misconfigs:
-        lines += ["", f"### 設定ミス（trivy config, CRITICAL / HIGH: {len(misconfigs)} 件）", ""]
-        lines += ["| ID | 重大度 | ファイル | 内容 |", "|---|---|---|---|"]
+    lines += ["", f"### 設定ミス（trivy config, CRITICAL / HIGH: {len(misconfigs)} 件）", ""]
+    if config_targets:
+        lines += ["スキャン対象: " + " / ".join(f"`{t}`" for t in config_targets), ""]
+    if not misconfigs:
+        lines.append("ありません。")
+    else:
+        lines += [
+            "依存の更新では解消しないため、該当ファイルを修正するか、影響を評価して"
+            " `.trivyignore.yaml` に理由と期限を付けて受容すること。",
+            "",
+            "| ID | 重大度 | ファイル | 内容 |",
+            "|---|---|---|---|",
+        ]
         for m in misconfigs[:MAX_ROWS]:
             lines.append(
                 f"| {m.get('ID', '')} | {m.get('Severity', '')} | `{cell(m['Target'])}` "
@@ -272,7 +288,8 @@ def main() -> int:
     config_json = json.loads(Path(args.config).read_text()) if args.config else {}
     findings = load_findings(image_json, args.remedy)
     misconfigs = load_misconfigs(config_json)
-    report = render(image_json, findings, misconfigs, count_ignores(args.ignorefile), args.title)
+    config_targets = [r.get("Target", "") for r in config_json.get("Results") or []]
+    report = render(image_json, findings, misconfigs, count_ignores(args.ignorefile), args.title, config_targets)
 
     if args.summary:
         Path(args.summary).write_text(report)
@@ -284,6 +301,7 @@ def main() -> int:
         "fixable_critical": sum(1 for f in fixable if f.severity == "CRITICAL"),
         "fixable_high": sum(1 for f in fixable if f.severity == "HIGH"),
         "misconfig": len(misconfigs),
+        "misconfig_critical": sum(1 for m in misconfigs if m.get("Severity") == "CRITICAL"),
         "total": len(findings),
         "fingerprint": fingerprint(findings),
     }
