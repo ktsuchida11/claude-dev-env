@@ -105,6 +105,10 @@ def remedy_for(result: dict, vuln: dict) -> tuple[str, str]:
             return REBUILD, "AWS CLI（ビルド時に最新を取得）"
         if vuln.get("PkgName") in ("pip", "uv"):
             return BUMP, vuln["PkgName"]
+        # pip/_vendor/bom.cdx.json（pip 同梱の SBOM）由来の検出には PkgPath が付かない。
+        # 同梱の msgpack / urllib3 などは再ビルドでは更新されず、新しい pip が必要
+        if not vuln.get("PkgPath"):
+            return BUMP, "pip"
         return REBUILD, "Python パッケージ（langfuse / pip-audit / playwright。ビルド時に最新を取得）"
 
     if typ == "jar":
