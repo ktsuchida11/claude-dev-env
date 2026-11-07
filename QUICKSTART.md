@@ -434,7 +434,7 @@ gradle init --type java-application
 Express + React のフルスタックアプリ
 
 ## 技術スタック
-- Backend: Node.js 24 + Express
+- Backend: Node.js 26 + Express
 - Frontend: React 19 + TypeScript
 - DB: PostgreSQL
 

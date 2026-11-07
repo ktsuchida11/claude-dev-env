@@ -141,7 +141,7 @@ Dev Container の構成は Anthropic 公式リポジトリをベースにして�
 ```text
 claude-dev-env/
 ├── .devcontainer/                     # DevContainer ビルド設定
-│   ├── Dockerfile                     # 開発コンテナ (Node 24 + JDK 21 + Python + Claude Code + MCP)
+│   ├── Dockerfile                     # 開発コンテナ (Node 26 + JDK 21 + Python + Claude Code + MCP)
 │   ├── devcontainer.json              # VS Code Dev Containers 設定
 │   ├── init-firewall.sh               # 外部通信制限 (iptables + ipset, IPv4/IPv6 dual-stack)
 │   ├── install-claude.sh              # Claude Code CLI インストール
@@ -220,7 +220,7 @@ claude-dev-env/
 
 | 項目 | 内容 |
 | --- | --- |
-| ベースイメージ | `node:24` |
+| ベースイメージ | `node:26`（LTS "Lithium"） |
 | シェル | zsh (Powerlevel10k テーマ) |
 | Claude Code | standalone インストーラ（`claude.ai/install.sh`）。`CLAUDE_CODE_VERSION` build arg でバージョン固定可能（デフォルト: latest） |
 | 開発ツール | git, vim, nano, jq, fzf, ripgrep, gh (GitHub CLI), git-delta |
@@ -474,7 +474,7 @@ gh issue create --title "Bug: fix crash" --label bug
 
 | 言語 | ランタイム / SDK | Linter | Formatter | 型チェック | 言語サーバー (Serena) |
 | --- | --- | --- | --- | --- | --- |
-| TypeScript / JavaScript | Node.js 24 | ESLint 9 | Prettier | TypeScript (strict) | typescript-language-server |
+| TypeScript / JavaScript | Node.js 26 | ESLint 9 | Prettier | TypeScript (strict) | typescript-language-server |
 | Python | Python 3.12 + uv | Ruff | Ruff format | MyPy | Pyright |
 | Java | Eclipse Temurin JDK 21, Maven 3.9, Gradle 8.12 | - | - | - | jdtls (Eclipse JDT Language Server) |
 
@@ -911,7 +911,7 @@ dev コンテナには以下の MCP (Model Context Protocol) サーバーがプ�
 
 | 対象 | pin 方式 | 自動 PR での検証 |
 | --- | --- | --- |
-| Node ベースイメージ / docker-socket-proxy | タグ + digest | Docker Hub から digest 取得（Node は同一メジャー内。セキュリティリリースはクールダウン例外） |
+| Node ベースイメージ / docker-socket-proxy | タグ + digest | Docker Hub から digest 取得（Node は `MAJOR_PINS["node"]` のメジャー内。セキュリティリリースはクールダウン例外） |
 | LiteLLM (`litellm/Dockerfile`) | タグ + digest | GitHub の正式リリース（prerelease / `-stable` / `-rc` / `-dev` 以外）に追従し ghcr.io から digest 取得。`config.yaml` の互換性はリリースノートで確認。**上限 v1.106.2**（2026-10-21 のリリースパイプライン侵害以降の版は、安全性を確認してから `MAX_VERSIONS` を手動で引き上げる） |
 | Terraform / AWS CLI / Session Manager plugin | バージョン + PGP 署名 | 署名ファイルの公開を確認（署名検証はビルド時） |
 | gh / tflint / terraform-docs / trivy / gitleaks / sops / rtk | バージョン + アーキ別 SHA256 | 実ファイルの SHA256 を公式 checksums と照合してから書き込む |
@@ -921,7 +921,8 @@ dev コンテナには以下の MCP (Model Context Protocol) サーバーがプ�
 
 - バージョンは**上げる方向にのみ**更新する（手動でクールダウン例外を適用した版は戻さない）
 - **メジャー固定**: rtk 0.x（1.0 以降 BUSL-1.1 を含む） / serena 1.x（2.0 以降 GPL・REPL 既定） /
-  typescript 6.x（7 は tsserver.js 非同梱で typescript-language-server が動かない） / maven 3.x
+  typescript 6.x（7 は tsserver.js 非同梱で typescript-language-server が動かない） / maven 3.x /
+  Node 26（LTS。新しい LTS が出ても警告のみ。`MAJOR_PINS["node"]` を上げると次回の自動更新でそのメジャーへ移行）
 - APT 署名鍵（Docker / Adoptium）の fingerprint は自動更新せず、変化を検知したら PR に警告のみ記載
 - ワークフロー内の GitHub Actions（コミット SHA pin）は `.github/dependabot.yml` により Dependabot が
   同じく毎週月曜・7 日クールダウンで更新 PR を作成する

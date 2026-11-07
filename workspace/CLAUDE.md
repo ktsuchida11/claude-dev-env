@@ -66,7 +66,7 @@ Claude Code 2.1.177+ のデフォルトである **auto モード**を `permissi
 
 | 言語                    | バージョン       | パッケージマネージャ | Linter   | Formatter   |
 | ----------------------- | ---------------- | -------------------- | -------- | ----------- |
-| TypeScript / JavaScript | Node.js 24       | npm                  | ESLint 9 | Prettier    |
+| TypeScript / JavaScript | Node.js 26       | npm                  | ESLint 9 | Prettier    |
 | Python                  | 3.12             | uv                   | Ruff     | Ruff format |
 | Java                    | JDK 21 (Temurin) | Maven / Gradle       | -        | -           |
 
