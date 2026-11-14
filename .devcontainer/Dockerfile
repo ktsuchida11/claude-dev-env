@@ -5,7 +5,7 @@
 # メジャーは .github/scripts/devcontainer-version-bump.py の MAJOR_PINS["node"] で指定し、上げると次回の自動更新で移行する。
 # -slim を採用（フル版の buildpack-deps 由来パッケージによる脆弱性を削減。必要なものは Layer 1 で明示導入）。
 # 更新時: docker pull node:<ver>-trixie-slim && docker inspect --format='{{index .RepoDigests 0}}' node:<ver>-trixie-slim
-FROM node:26.13.0-trixie-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072
+FROM node:26.13.1-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc
 
 ARG TZ
 ENV TZ="$TZ"
@@ -176,9 +176,9 @@ RUN set -eux; \
 # 未固定で最新を取り込まずバージョンと SHA256 を明示する。更新時はリリースノートとアドバイザリを確認すること。
 # APT リポジトリは distro コードネーム別の反映が遅れ版指定で取得できないことがあるため GitHub Release を使う。
 # 0.76.1 は公開 7 日未満だが、eMudhra 中間 CA 鍵漏えいへのセキュリティ修正のためクールダウンの例外とする。
-ARG TRIVY_VERSION=0.76.1
-ARG TRIVY_SHA256_AMD64=c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
-ARG TRIVY_SHA256_ARM64=e174dff2a6dba5e3ae41f8d0537a6324405bd08132497340304c6b20e0f16a1f
+ARG TRIVY_VERSION=0.76.2
+ARG TRIVY_SHA256_AMD64=bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
+ARG TRIVY_SHA256_ARM64=ab9d51f86e6a5fb936f605faff6b593ac51bc378fff4d3e8b9d58358b9c367c3
 RUN set -eux; \
   ARCH=$(dpkg --print-architecture); \
   case "${ARCH}" in amd64) TV_ARCH=64bit; SHA=${TRIVY_SHA256_AMD64} ;; arm64) TV_ARCH=ARM64; SHA=${TRIVY_SHA256_ARM64} ;; *) exit 1 ;; esac; \
@@ -327,7 +327,7 @@ RUN if [ "$ENABLE_JAVA" = "true" ]; then \
   fi
 
 # Install Gradle (SHA256 公式 .sha256)
-ARG GRADLE_VERSION=9.8.2
+ARG GRADLE_VERSION=9.9.0
 RUN if [ "$ENABLE_JAVA" = "true" ]; then \
   set -eux; \
   cd /tmp; \
@@ -391,8 +391,8 @@ RUN set -eux; \
 # ※ pip/uv 自体のインストールにはクールダウンを適用しない（ブートストラップ）ため、バージョンを明示固定する
 # Trixie の python3-pip は dpkg 管理 (RECORD ファイル無し) で、--break-system-packages だけでは
 # 上書きインストールが拒否される。--ignore-installed を併用して既存メタデータを無視させる。
-ARG PIP_VERSION=26.2.2
-ARG UV_VERSION=0.13.6
+ARG PIP_VERSION=26.3
+ARG UV_VERSION=0.13.7
 RUN pip3 install --break-system-packages --ignore-installed "pip==${PIP_VERSION}" && \
   pip3 install --break-system-packages "uv==${UV_VERSION}" && \
   pip3 install --break-system-packages --uploaded-prior-to=P7D langfuse pip-audit playwright
@@ -443,8 +443,8 @@ RUN cd /tmp && CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} /usr/local/bin/install
 
 # --- MCP server npm packages (個別インストールで1つの失敗が他に影響しない) ---
 # バージョンは mcp-servers.json と必ず揃える。更新時は両方一緒に変更すること。
-ARG CONTEXT7_MCP_VERSION=4.4.4
-ARG PLAYWRIGHT_MCP_VERSION=0.0.83
+ARG CONTEXT7_MCP_VERSION=4.5.1
+ARG PLAYWRIGHT_MCP_VERSION=0.0.84
 RUN npm install -g --ignore-scripts @upstash/context7-mcp@${CONTEXT7_MCP_VERSION} || echo "WARN: context7-mcp install failed"
 RUN npm install -g --ignore-scripts @playwright/mcp@${PLAYWRIGHT_MCP_VERSION} || echo "WARN: playwright-mcp install failed"
 
@@ -462,7 +462,7 @@ RUN node "$(npm root -g)/@playwright/mcp/node_modules/playwright/cli.js" install
 # Install language servers for Serena
 # typescript は 6.x に留める: TypeScript 7 (ネイティブ版) は tsserver.js を同梱しておらず、
 # typescript-language-server が起動できないため。
-ARG TYPESCRIPT_LANGUAGE_SERVER_VERSION=6.0.2
+ARG TYPESCRIPT_LANGUAGE_SERVER_VERSION=6.0.3
 ARG TYPESCRIPT_VERSION=6.0.3
 ARG PYRIGHT_VERSION=1.1.414
 RUN npm install -g --ignore-scripts \

@@ -896,8 +896,8 @@ dev コンテナには以下の MCP (Model Context Protocol) サーバーがプ�
 
 | MCP | 取得元 | 現在の pin |
 | --- | --- | --- |
-| context7 | npm `@upstash/context7-mcp` | `4.4.4` |
-| playwright | npm `@playwright/mcp` | `0.0.83` |
+| context7 | npm `@upstash/context7-mcp` | `4.5.1` |
+| playwright | npm `@playwright/mcp` | `0.0.84` |
 | serena | git `oraios/serena` | commit `949a27ef1e5fda1a6e7b561e777bcece345c6ffd`（v1.7.0 相当）|
 
 更新運用（MCP を含む DevContainer の全依存）:
@@ -979,7 +979,7 @@ trivy image --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed \
 ```bash
 # MCP サーバーの動作確認（バージョンは mcp-servers.json と揃える）
 uvx --from git+https://github.com/oraios/serena@949a27ef1e5fda1a6e7b561e777bcece345c6ffd serena --help
-npx @playwright/mcp@0.0.83 --help
+npx @playwright/mcp@0.0.84 --help
 
 # 言語サーバーの確認
 typescript-language-server --version
