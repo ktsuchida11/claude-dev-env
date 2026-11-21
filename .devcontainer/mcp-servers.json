@@ -2,13 +2,13 @@
   "context7": {
     "type": "stdio",
     "command": "npx",
-    "args": ["-y", "@upstash/context7-mcp@4.4.4"],
+    "args": ["-y", "@upstash/context7-mcp@4.7.0"],
     "env": {}
   },
   "playwright": {
     "type": "stdio",
     "command": "npx",
-    "args": ["-y", "@playwright/mcp@0.0.83"],
+    "args": ["-y", "@playwright/mcp@0.0.85"],
     "env": {}
   },
   "serena": {
